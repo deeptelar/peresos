@@ -27,7 +27,11 @@ Then it waits for you:
   tomorrow, and it asks again without calling the model a second time.
 
 It eats one item a day at most. Skip a few days and it simply sleeps, then tells you how long. It
-never nags. It writes a line in its diary after every meal, and grows rounder as the pile shrinks.
+never nags. It writes a line in its diary after every meal, and grows up as the pile shrinks: a baby
+that kicks its little legs, a young sloth chewing a leaf, a grown one yawning, and after ten items,
+a big round sloth asleep on its branch.
+
+![The four phases of Peresós, each with its own animation](docs/peresos-phases.gif)
 
 ## Run it
 
@@ -88,6 +92,9 @@ flowchart LR
 - **Thinking where it helps**: `chew` lets Gemma think; the diary line uses the same model with
   `reasoning_effort: "none"`. In my test, a three-word answer took 37 seconds with thinking and 4
   without.
+- **The portrait is drawn, not stored**: [`Portrait`](src/main/kotlin/dev/deeptelar/peresos/Portrait.kt)
+  draws the sloth from ovals sized for its phase, two pixels per character in 24-bit color, and
+  plays its animation only when the output is a terminal.
 - **Tested without a model**: [`SlothTest`](src/test/kotlin/dev/deeptelar/peresos/SlothTest.kt) runs
   the whole graph with a scripted model, `./gradlew test`.
 

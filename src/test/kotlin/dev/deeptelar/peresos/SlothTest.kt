@@ -1,5 +1,9 @@
 package dev.deeptelar.peresos
 
+import dev.deeptelar.peresos.Portrait.Phase.BABY
+import dev.deeptelar.peresos.Portrait.Phase.GROWN
+import dev.deeptelar.peresos.Portrait.Phase.ROUND
+import dev.deeptelar.peresos.Portrait.Phase.YOUNG
 import dev.deeptelar.telar.GraphConfig
 import dev.deeptelar.telar.GraphResult
 import dev.deeptelar.telar.MemoryCheckpointer
@@ -163,12 +167,24 @@ class SlothTest {
         }
 
     @Test
-    fun `the portrait grows rounder and keeps its size`() {
-        val thin = Portrait.lines(0)
-        val round = Portrait.lines(6)
+    fun `the portrait grows from a baby into a big round sloth`() {
+        val phases = listOf(0, 1, 2, 4, 5, 9, 10, 40).map { Portrait.phase(it) }
+        val sizes = Portrait.Phase.entries.map { phase -> Portrait.frames(listOf(0, 2, 5, 10)[phase.ordinal]).first().size }
 
-        assertEquals(8, thin.size)
-        assertEquals(8, round.size)
-        assertTrue(round.last().count { it == '▀' } > thin.last().count { it == '▀' })
+        assertEquals(listOf(BABY, BABY, YOUNG, YOUNG, GROWN, GROWN, ROUND, ROUND), phases)
+        assertEquals(sizes.sorted(), sizes)
+        assertEquals(sizes, sizes.distinct())
+    }
+
+    @Test
+    fun `every frame of an animation has the same size, so the next one draws over it`() {
+        for (roundness in listOf(0, 2, 5, 10)) {
+            val frames = Portrait.frames(roundness)
+            val widths = frames.flatMap { frame -> frame.map { Regex("\u001B\\[[0-9;]*m").replace(it, "").length } }
+
+            assertTrue(frames.size > 1)
+            assertEquals(1, frames.map { it.size }.distinct().size)
+            assertEquals(1, widths.distinct().size)
+        }
     }
 }

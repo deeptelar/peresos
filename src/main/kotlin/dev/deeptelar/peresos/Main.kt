@@ -11,6 +11,7 @@ import dev.deeptelar.telar.openai.OpenAiChatModel
 import dev.deeptelar.telar.serialization.KotlinxStateSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import kotlinx.coroutines.delay
 import kotlinx.io.files.Path
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -20,6 +21,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import java.nio.file.Path as JavaPath
 
@@ -102,9 +104,7 @@ private fun askFor(sloth: Sloth): Answer? {
     }
 }
 
-private fun report(sloth: Sloth) {
-    println()
-    Portrait.lines(sloth.roundness).forEach { println("  $it") }
+private suspend fun report(sloth: Sloth) {
     println()
     if (sloth.sleptDays > 1) say("It slept ${sloth.sleptDays} days. It feels wonderful.")
     when (sloth.rest) {
@@ -121,6 +121,35 @@ private fun report(sloth: Sloth) {
             sloth.diary.lastOrNull()?.let { entry -> wrap("Diary: \"${entry.text}\"", 84).forEachIndexed { index, line -> say(if (index == 0) line else "       $line") } }
         }
     }
+    println()
+    val grew = sloth.rest == Rest.NONE && Portrait.phase(sloth.roundness) != Portrait.phase(sloth.roundness - 1)
+    showPortrait(sloth.roundness, grew)
+}
+
+/** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
+private val animated: Boolean =
+    System.getenv("TERM") != "dumb" &&
+        System.console()?.let { console -> runCatching { console.javaClass.getMethod("isTerminal").invoke(console) as Boolean }.getOrDefault(true) } == true
+
+/** The portrait and the phase it is in. In a terminal it plays its animation twice, slowly, then stands still. */
+private suspend fun showPortrait(
+    roundness: Int,
+    grew: Boolean = false,
+) {
+    val frames = Portrait.frames(roundness)
+    if (animated) {
+        repeat(2) {
+            frames.forEach { frame ->
+                frame.forEach { println("  $it") }
+                delay(200.milliseconds)
+                print("\u001B[${frame.size}A")
+            }
+        }
+    }
+    frames.first().forEach { println("  $it") }
+    println()
+    val finished = "$roundness ${if (roundness == 1) "item" else "items"} finished"
+    say("${if (grew) "It grew! Peresós is now" else "Peresós is"} ${Portrait.phase(roundness).title} ($finished).")
 }
 
 private fun feed(pile: Pile, words: List<String>) {
@@ -151,11 +180,11 @@ private fun showPile(pile: Pile) {
     items.forEachIndexed { index, item -> println("  ${index + 1}. ${item.lines().first().take(70)}") }
 }
 
-private fun showDiary(sloth: Sloth?) {
+private suspend fun showDiary(sloth: Sloth?) {
     if (sloth == null || sloth.diary.isEmpty()) return say("The diary is empty. Peresós has not eaten anything yet.")
-    Portrait.lines(sloth.roundness).forEach { println("  $it") }
-    println()
     sloth.diary.forEach { entry -> wrap(entry.text, 70).forEachIndexed { index, line -> println("  ${if (index == 0) entry.day else " ".repeat(10)}  $line") } }
+    println()
+    showPortrait(sloth.roundness)
 }
 
 private fun say(text: String) = println("  $text")
