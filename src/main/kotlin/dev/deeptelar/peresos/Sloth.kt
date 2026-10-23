@@ -57,6 +57,7 @@ enum class Rest { NONE, ALREADY_ATE, EMPTY_PILE }
  * @property item the item of the pile it is eating, while it eats.
  * @property bite what Gemma made of [item], waiting for an [answer].
  * @property tries the versions of [item] the person sent back with [Answer.AGAIN].
+ * @property emptied whether the meal of this wake was the last item of the pile: it ate everything.
  */
 @Serializable
 data class Sloth(
@@ -71,6 +72,7 @@ data class Sloth(
     val meals: List<Meal> = emptyList(),
     val diary: List<DiaryEntry> = emptyList(),
     val tries: List<String> = emptyList(),
+    val emptied: Boolean = false,
 ) {
     /** How round it is: one more for every item that left the pile for good. */
     val roundness: Int get() = meals.count { it.answer != Answer.LATER }
@@ -122,6 +124,7 @@ fun sloth(
                     item = next.takeIf { rest == Rest.NONE },
                     bite = null,
                     answer = null,
+                    emptied = false,
                 )
             }
 
@@ -151,7 +154,12 @@ fun sloth(
                         Answer.AGAIN -> Unit
                     }
                 }
-                sloth.copy(lastMeal = sloth.today, meals = sloth.meals + Meal(sloth.today, bite.title, bite.kind, answer), tries = emptyList())
+                sloth.copy(
+                    lastMeal = sloth.today,
+                    meals = sloth.meals + Meal(sloth.today, bite.title, bite.kind, answer),
+                    tries = emptyList(),
+                    emptied = answer != Answer.LATER && pile.items().isEmpty(),
+                )
             }
 
         val diary =
@@ -188,7 +196,8 @@ private fun diaryPrompt(sloth: Sloth): String {
             Answer.AGAIN -> error("A meal is never an AGAIN.")
         }
     val sleep = if (sloth.sleptDays > 1) "You slept ${sloth.sleptDays} days before this wake. " else ""
+    val last = if (sloth.emptied) "It was the last item: the pile is empty now, you ate everything, and you can sleep on top of your branch. " else ""
     return "Write today's line of your diary: one or two short sentences, in the first person, no more than 30 words. " +
         "${sleep}Today you ate one item of the pile, a ${meal.kind.name.lowercase()} called \"${meal.title}\", and $said. " +
-        "You have eaten ${sloth.roundness} items in all. Reply with the line only."
+        "${last}You have eaten ${sloth.roundness} items in all. Reply with the line only."
 }

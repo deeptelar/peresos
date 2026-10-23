@@ -1,18 +1,20 @@
 package dev.deeptelar.peresos
 
+import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
  * The sloth as pixel art, hanging from its branch. It is born a baby and grows bigger and rounder
- * with every item it finishes, and in each phase it does something different while you look.
+ * with every item it finishes, and in each phase it does something different while you look. When
+ * it has eaten the whole pile, it climbs on top of its branch and sleeps there.
  */
 object Portrait {
     /** How grown up the sloth is, and what it does in its animation. */
-    enum class Phase(val title: String) {
-        BABY("a baby, kicking its little legs"),
-        YOUNG("young, chewing a leaf"),
-        GROWN("grown up, yawning"),
-        ROUND("big and round, asleep"),
+    enum class Phase(val title: String, val doing: String) {
+        BABY("a baby", "kicking its little legs"),
+        YOUNG("young", "chewing a leaf"),
+        GROWN("grown up", "yawning"),
+        ROUND("big and round", "asleep"),
     }
 
     fun phase(roundness: Int): Phase =
@@ -24,15 +26,26 @@ object Portrait {
         }
 
     /** The portrait standing still: the first frame of its animation. */
-    fun lines(roundness: Int): List<String> = frames(roundness).first()
+    fun lines(
+        roundness: Int,
+        onTop: Boolean = false,
+    ): List<String> = frames(roundness, onTop).first()
 
-    /** The frames of the animation, to show one after another and then again. All have the same size. */
-    fun frames(roundness: Int): List<List<String>> {
-        val phase = phase(roundness)
-        return poses.getValue(phase).map { pose -> draw(builds.getValue(phase), pose).render() }
+    /**
+     * The frames of the animation, to show one after another and then again. All have the same size.
+     *
+     * @param onTop it ate the whole pile, and sleeps lying on top of its branch instead of hanging below it.
+     */
+    fun frames(
+        roundness: Int,
+        onTop: Boolean = false,
+    ): List<List<String>> {
+        val build = builds.getValue(phase(roundness))
+        if (onTop) return asleep.map { pose -> drawOnTop(build, pose).render() }
+        return poses.getValue(phase(roundness)).map { pose -> draw(build, pose).render() }
     }
 
-    /** An oval around the middle column, at height [y]. */
+    /** An oval around a column, at height [y]. */
     private class Oval(val y: Double, val rx: Double, val ry: Double)
 
     /** The size of the picture, and of the head and the body in it, in pixels. */
@@ -65,6 +78,9 @@ object Portrait {
             Phase.ROUND to (0 until 8).map { Pose(closed = true, breath = if (it % 4 < 2) 0 else 1, z = it) },
         )
 
+    /** Fast asleep and breathing slowly, with the z's floating up. */
+    private val asleep = poses.getValue(Phase.ROUND)
+
     private fun draw(
         build: Build,
         pose: Pose,
@@ -90,43 +106,89 @@ object Portrait {
         canvas.oval(cx.toDouble(), body.y, body.rx + breath, body.ry + breath, 'F')
         canvas.oval(cx.toDouble(), body.y + 0.5, body.rx * 0.75 + breath, body.ry * 0.75 + breath, 'L', over = 'F')
         canvas.closeGaps(head.y.toInt(), body.y.toInt())
-        canvas.oval(cx.toDouble(), head.y, head.rx, head.ry, 'F')
-        canvas.oval(cx.toDouble(), head.y - 0.5, head.rx - 1, head.ry - 1, 'd', over = 'F')
-        canvas.oval(cx.toDouble(), head.y + 0.5, head.rx - 1, head.ry - 1.2, 'M', over = 'd')
+        canvas.head(cx, head)
+        canvas.face(cx, head, build.eyes, pose)
+        canvas.z(floor(cx + head.rx).toInt() + build.arm + 2, head.y.toInt() / 2, pose)
+        return canvas
+    }
 
-        // The face: eyes in the dark stripes that run down from them, the nose, and the mouth.
+    /** Lying on its belly on top of the branch, with its arms and legs hanging down on both sides of it. */
+    private fun drawOnTop(
+        build: Build,
+        pose: Pose,
+    ): Canvas {
+        val canvas = Canvas(build.width, build.height)
+        val branch = build.height - 5
+        val hx = build.width - ceil(build.head.rx).toInt() // the head at the right end, the face on columns hx - 1 and hx
+        val head = Oval(branch - build.head.ry + 1, build.head.rx, build.head.ry)
+        val length = build.body.ry * 1.3
+        val tall = build.body.rx * 0.8 + pose.breath * 0.5
+        val bodyX = maxOf(length + 0.5, hx - head.rx - length + 2)
+
+        canvas.row(branch, 'b')
+        canvas.row(branch + 1, 'B')
+        val leg = (bodyX - length * 0.5).toInt()
+        for (x in listOf(leg, leg + build.arm + 1, hx - 2 - build.arm, hx + 2)) {
+            for (y in branch - 1..branch + 3) repeat(build.arm) { canvas[x + it, y] = if (y == branch + 3) 'C' else 'F' }
+        }
+        canvas.oval(bodyX, branch + 0.3 - tall, length, tall, 'F')
+        canvas.head(hx, head)
+        canvas.face(hx, head, build.eyes, pose)
+        canvas.z(hx + 1, floor(head.y - head.ry).toInt() / 2 - 1, pose)
+        return canvas
+    }
+
+    /** The head around column [cx]: fur, darker on top, and the pale mask of the face. */
+    private fun Canvas.head(
+        cx: Int,
+        head: Oval,
+    ) {
+        oval(cx.toDouble(), head.y, head.rx, head.ry, 'F')
+        oval(cx.toDouble(), head.y - 0.5, head.rx - 1, head.ry - 1, 'd', over = 'F')
+        oval(cx.toDouble(), head.y + 0.5, head.rx - 1, head.ry - 1.2, 'M', over = 'd')
+    }
+
+    /** The face around column [cx]: eyes in the dark stripes that run down from them, the nose, and the mouth. */
+    private fun Canvas.face(
+        cx: Int,
+        head: Oval,
+        eyes: Int,
+        pose: Pose,
+    ) {
         val eye = head.y.toInt()
-        val eyeX = cx - 1 - build.eyes
-        canvas.both(eyeX, eye, if (pose.closed) 'E' else 'o')
-        canvas.both(eyeX - 1, eye, 'E')
-        canvas.both(eyeX - 2, eye + 1, 'E')
-        canvas.both(cx - 1, eye + 1, 'N')
+        val eyeX = cx - 1 - eyes
+        both(eyeX, eye, if (pose.closed) 'E' else 'o', cx)
+        both(eyeX - 1, eye, 'E', cx)
+        both(eyeX - 2, eye + 1, 'E', cx)
+        both(cx - 1, eye + 1, 'N', cx)
         val mouth = eye + 2
         when (pose.mouth) {
             0 -> {
-                canvas.both(cx - 2, mouth, 'm')
-                canvas.both(cx - 1, mouth + 1, 'm')
+                both(cx - 2, mouth, 'm', cx)
+                both(cx - 1, mouth + 1, 'm', cx)
             }
             1 -> {
-                canvas.both(cx - 2, mouth, 'm')
-                canvas.both(cx - 1, mouth, 'O')
+                both(cx - 2, mouth, 'm', cx)
+                both(cx - 1, mouth, 'O', cx)
             }
             else -> {
-                canvas.both(cx - 1, mouth, 'O')
-                canvas.both(cx - 1, mouth + 1, 'P')
+                both(cx - 1, mouth, 'O', cx)
+                both(cx - 1, mouth + 1, 'P', cx)
             }
         }
-        repeat(pose.leaf) { canvas[cx + 1 + it, mouth + 1] = 'G' }
-        if (pose.leaf == 3) canvas[cx + 3, mouth] = 'g'
+        repeat(pose.leaf) { this[cx + 1 + it, mouth + 1] = 'G' }
+        if (pose.leaf == 3) this[cx + 3, mouth] = 'g'
+    }
 
-        // Asleep, the z's float up beside its head.
-        if (pose.z >= 0) {
-            val x = floor(cx + head.rx).toInt() + build.arm + 2
-            val line = head.y.toInt() / 2
-            val stages = listOf(Triple(x, line, 'z'), Triple(x + 1, line - 1, 'z'), Triple(x + 1, line - 2, 'Z'), Triple(x + 2, line - 3, 'Z'))
-            for (stage in listOf(pose.z % 4, (pose.z + 2) % 4)) stages[stage].let { (sx, sy, letter) -> canvas.texts[sx to sy] = letter }
-        }
-        return canvas
+    /** Asleep, the z's float up and to the right from column [x] and [line]. */
+    private fun Canvas.z(
+        x: Int,
+        line: Int,
+        pose: Pose,
+    ) {
+        if (pose.z < 0) return
+        val stages = listOf(Triple(x, line, 'z'), Triple(x + 1, line - 1, 'z'), Triple(x + 1, line - 2, 'Z'), Triple(x + 2, line - 3, 'Z'))
+        for (stage in listOf(pose.z % 4, (pose.z + 2) % 4)) stages[stage].let { (sx, sy, letter) -> if (sy >= 0) texts[sx to sy] = letter }
     }
 
     private class Canvas(
@@ -146,14 +208,15 @@ object Portrait {
             if (x in 0 until width && y in 0 until height) pixels[y][x] = pixel
         }
 
-        /** A pixel and its mirror on the other side of the middle. */
+        /** A pixel and its mirror on the other side of column [center], which falls between [center] - 1 and [center]. */
         fun both(
             x: Int,
             y: Int,
             pixel: Char,
+            center: Int = width / 2,
         ) {
             this[x, y] = pixel
-            this[width - 1 - x, y] = pixel
+            this[2 * center - 1 - x, y] = pixel
         }
 
         fun row(

@@ -11,6 +11,7 @@ import dev.deeptelar.telar.test.ScriptedChatModel
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -77,6 +78,8 @@ class SlothTest {
             assertEquals(1, state.roundness)
             assertEquals("2026-10-23", state.lastMeal)
             assertEquals(DiaryEntry("2026-10-23", "Ate a dinner plan. Delicious, and nobody had to hurry."), state.diary.single())
+            assertTrue(state.emptied, "that was the last item of the pile")
+            assertTrue("the pile is empty now" in model.requests.last().messages.toString())
             assertNull(state.item)
         }
 
@@ -96,6 +99,7 @@ class SlothTest {
 
             assertEquals(listOf("Decide on the gym", "Marta asked if Friday dinner still works"), pile.items)
             assertEquals(0, state.roundness)
+            assertFalse(state.emptied, "the pile still has both items")
         }
 
     @Test
@@ -178,8 +182,8 @@ class SlothTest {
 
     @Test
     fun `every frame of an animation has the same size, so the next one draws over it`() {
-        for (roundness in listOf(0, 2, 5, 10)) {
-            val frames = Portrait.frames(roundness)
+        for (roundness in listOf(0, 2, 5, 10)) for (onTop in listOf(false, true)) {
+            val frames = Portrait.frames(roundness, onTop)
             val widths = frames.flatMap { frame -> frame.map { Regex("\u001B\\[[0-9;]*m").replace(it, "").length } }
 
             assertTrue(frames.size > 1)

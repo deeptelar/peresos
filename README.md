@@ -29,9 +29,10 @@ Then it waits for you:
 It eats one item a day at most. Skip a few days and it simply sleeps, then tells you how long. It
 never nags. It writes a line in its diary after every meal, and grows up as the pile shrinks: a baby
 that kicks its little legs, a young sloth chewing a leaf, a grown one yawning, and after ten items,
-a big round sloth asleep on its branch.
+a big round sloth asleep on its branch. When you have finished the whole pile, it says so, and
+sleeps on top of its branch, full, until you feed it again.
 
-![The four phases of Peresós, each with its own animation](docs/peresos-phases.gif)
+![The four phases of Peresós, each with its own animation, and each asleep on top of the branch after eating the whole pile](docs/peresos-phases.gif)
 
 ## Run it
 

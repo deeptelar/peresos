@@ -44,8 +44,8 @@ suspend fun main(args: Array<String>) {
         "feed" -> feed(pile, args.drop(1))
         "about" -> about(args.drop(1))
         "pile" -> showPile(pile)
-        "diary" -> showDiary(sloth(Unused, pile).lastResult(config)?.state)
-        null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = aboutFile.readTextOrEmpty()), config) }
+        "diary" -> showDiary(sloth(Unused, pile).lastResult(config)?.state, pile)
+        null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = aboutFile.readTextOrEmpty()), config, pile) }
         else -> println(USAGE)
     }
 }
@@ -64,7 +64,7 @@ private fun model(client: HttpClient, think: Boolean = true) =
         timeout = 15.minutes,
     )
 
-private suspend fun wake(graph: CompiledGraph<Sloth>, config: GraphConfig<Sloth>) {
+private suspend fun wake(graph: CompiledGraph<Sloth>, config: GraphConfig<Sloth>, pile: Pile) {
     val today = LocalDate.now().toString()
     var result =
         when (val last = graph.lastResult(config)) {
@@ -79,7 +79,7 @@ private suspend fun wake(graph: CompiledGraph<Sloth>, config: GraphConfig<Sloth>
         if (answer == Answer.AGAIN) say("Peresós chews it again. Slowly.")
         result = graph.resume(config) { it.copy(answer = answer) }
     }
-    report(result.state)
+    report(result.state, pile)
 }
 
 private suspend fun <T> chewing(run: suspend () -> T): T {
@@ -104,11 +104,12 @@ private fun askFor(sloth: Sloth): Answer? {
     }
 }
 
-private suspend fun report(sloth: Sloth) {
+private suspend fun report(sloth: Sloth, pile: Pile) {
     println()
     if (sloth.sleptDays > 1) say("It slept ${sloth.sleptDays} days. It feels wonderful.")
     when (sloth.rest) {
         Rest.ALREADY_ATE -> say("It already ate today. One item a day is plenty. Come back tomorrow.")
+        Rest.EMPTY_PILE if sloth.roundness > 0 -> say("The pile is still empty. Peresós sleeps on top of its branch until you feed it: peresos feed \"...\"")
         Rest.EMPTY_PILE -> say("The pile is empty. Nothing to eat, so it goes back to sleep. Feed it with: peresos feed \"...\"")
         Rest.NONE -> {
             val meal = sloth.meals.last()
@@ -118,13 +119,17 @@ private suspend fun report(sloth: Sloth) {
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
             }
+            if (sloth.emptied) say("That was the last one. The pile is empty: Peresós ate everything. Nothing left to put off.")
             sloth.diary.lastOrNull()?.let { entry -> wrap("Diary: \"${entry.text}\"", 84).forEachIndexed { index, line -> say(if (index == 0) line else "       $line") } }
         }
     }
     println()
     val grew = sloth.rest == Rest.NONE && Portrait.phase(sloth.roundness) != Portrait.phase(sloth.roundness - 1)
-    showPortrait(sloth.roundness, grew)
+    showPortrait(sloth.roundness, grew, onTop = isFull(sloth, pile))
 }
+
+/** It ate the whole pile, so it sleeps on top of its branch until there is something new. */
+private fun isFull(sloth: Sloth, pile: Pile): Boolean = sloth.roundness > 0 && pile.items().isEmpty()
 
 /** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
 private val animated: Boolean =
@@ -135,8 +140,9 @@ private val animated: Boolean =
 private suspend fun showPortrait(
     roundness: Int,
     grew: Boolean = false,
+    onTop: Boolean = false,
 ) {
-    val frames = Portrait.frames(roundness)
+    val frames = Portrait.frames(roundness, onTop)
     if (animated) {
         repeat(2) {
             frames.forEach { frame ->
@@ -149,7 +155,9 @@ private suspend fun showPortrait(
     frames.first().forEach { println("  $it") }
     println()
     val finished = "$roundness ${if (roundness == 1) "item" else "items"} finished"
-    say("${if (grew) "It grew! Peresós is now" else "Peresós is"} ${Portrait.phase(roundness).title} ($finished).")
+    val phase = Portrait.phase(roundness)
+    val doing = if (onTop) "asleep on top of its branch, full" else phase.doing
+    say("${if (grew) "It grew! Peresós is now" else "Peresós is"} ${phase.title}, $doing ($finished).")
 }
 
 private fun feed(pile: Pile, words: List<String>) {
@@ -180,11 +188,11 @@ private fun showPile(pile: Pile) {
     items.forEachIndexed { index, item -> println("  ${index + 1}. ${item.lines().first().take(70)}") }
 }
 
-private suspend fun showDiary(sloth: Sloth?) {
+private suspend fun showDiary(sloth: Sloth?, pile: Pile) {
     if (sloth == null || sloth.diary.isEmpty()) return say("The diary is empty. Peresós has not eaten anything yet.")
     sloth.diary.forEach { entry -> wrap(entry.text, 70).forEachIndexed { index, line -> println("  ${if (index == 0) entry.day else " ".repeat(10)}  $line") } }
     println()
-    showPortrait(sloth.roundness)
+    showPortrait(sloth.roundness, onTop = isFull(sloth, pile))
 }
 
 private fun say(text: String) = println("  $text")
