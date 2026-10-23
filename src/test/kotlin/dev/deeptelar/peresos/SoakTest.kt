@@ -298,7 +298,7 @@ class SoakTest {
 
     private fun ComposeUiTest.diaryTab() {
         tab("Diary")
-        val last = state()?.diary?.lastOrNull() ?: return assertExists("The diary is empty. Peresós has not eaten anything yet.")
+        val last = state()?.diary?.lastOrNull() ?: return assertExists("Nothing yet.")
         assertExists(last.text)
     }
 
@@ -333,7 +333,7 @@ class SoakTest {
             if (button == "Wake it" && (pile.isEmpty() || ateToday())) return
             click(button)
             assertTrue(model.busy, "the window sees the terminal has it")
-            assertExists("Peresós is awake in a terminal. Answer it there, then come back.")
+            assertExists("Awake in a terminal.")
             // The look every two seconds may read a stopped wake again from the checkpoint, as paused: the same sloth.
             val now = model.session.snapshot.value
             assertTrue(now !is GraphSnapshot.Running, "the window did nothing")
@@ -432,7 +432,7 @@ class SoakTest {
         assertEquals(tries, sloth.tries.size, "versions sent back")
         val snapshot = model.session.snapshot.value
         assertEquals(sloth, snapshot.state, "the window shows the checkpoint")
-        assertExists(Portrait.caption(sloth.roundness, onTop = model.isFull(sloth)), Portrait.caption(sloth.roundness, grew = true, onTop = model.isFull(sloth)))
+        assertExists(Portrait.label(sloth.roundness), Portrait.label(sloth.roundness, grew = true))
         when {
             stopped -> {
                 assertTrue(snapshot is GraphSnapshot.Stopped || snapshot is GraphSnapshot.Interrupted)
@@ -444,7 +444,7 @@ class SoakTest {
                 val bite = assertNotNull(sloth.bite)
                 assertExists(bite.title)
                 assertExists("Take it")
-                sloth.why?.let { assertExists("It picked the easiest one: $it") }
+                sloth.why?.let { assertExists("Why: $it") }
                 if (!gemma) assertTrue(bite.finished.startsWith("Done: ${mouth!!.lines().first()}"), "it chewed the item in its mouth")
                 assertTrue(mouth!! in kitchen.lastChew, "Gemma was asked about the item in its mouth")
                 kitchen.aboutThen.lines().filter { it.isNotBlank() }.forEach { assertTrue(it in kitchen.lastChew, "it told Gemma: $it") }

@@ -81,6 +81,15 @@ object Portrait {
             else -> Touch.FUR
         }
 
+    /** How grown up it is and how many items it finished, in a few words for the window. */
+    fun label(
+        roundness: Int,
+        grew: Boolean = false,
+    ): String {
+        val title = phase(roundness).title.removePrefix("a ").replaceFirstChar { it.uppercase() }
+        return "${if (grew) "It grew! " else ""}$title · $roundness eaten"
+    }
+
     /** What the sloth is and does, to write under its portrait. */
     fun caption(
         roundness: Int,

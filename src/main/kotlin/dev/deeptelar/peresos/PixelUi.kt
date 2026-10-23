@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -199,15 +198,13 @@ internal fun PixelField(
 internal fun PixelCheck(
     checked: Boolean,
     label: String,
-    note: String,
     onClick: () -> Unit,
 ) {
     Row(Modifier.clickable(onClick = onClick).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.size(24.dp).pixelBox(if (checked) Ink.green else Ink.field, raised = false), contentAlignment = Alignment.Center) {
             if (checked) PixelText("✓", size = SMALL, color = Color.White)
         }
-        PixelText(label, Modifier.width(132.dp), maxLines = 1)
-        PixelText(note, size = SMALL, color = Ink.faint)
+        PixelText(label, maxLines = 1)
     }
 }
 
