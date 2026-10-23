@@ -33,6 +33,15 @@ data class Bite(
     val finished: String,
 )
 
+/** Which item of the pile is the easiest, for a lazy wake. */
+@Serializable
+data class Pick(
+    @Description("The number of the easiest item in the list")
+    val number: Int,
+    @Description("Why it is the easiest, in one short sentence, as a lazy sloth would say it")
+    val why: String,
+)
+
 /** What the person says to a [Bite]. */
 @Serializable
 enum class Answer { YES, NO, LATER, AGAIN }
@@ -58,6 +67,10 @@ enum class Rest { NONE, ALREADY_ATE, EMPTY_PILE }
  * @property bite what Gemma made of [item], waiting for an [answer].
  * @property tries the versions of [item] the person sent back with [Answer.AGAIN].
  * @property emptied whether the meal of this wake was the last item of the pile: it ate everything.
+ * @property lazy this wake picks the easiest item of the pile, not the oldest, and does it the laziest way.
+ * @property why why it picked [item], on a lazy wake.
+ * @property lastLazy the item the last lazy wake picked: the next one picks another, so an item
+ * answered with "later" does not come back every time.
  */
 @Serializable
 data class Sloth(
@@ -73,10 +86,21 @@ data class Sloth(
     val diary: List<DiaryEntry> = emptyList(),
     val tries: List<String> = emptyList(),
     val emptied: Boolean = false,
+    val lazy: Boolean = false,
+    val why: String? = null,
+    val lastLazy: String? = null,
 ) {
     /** How round it is: one more for every item that left the pile for good. */
     val roundness: Int get() = meals.count { it.answer != Answer.LATER }
 }
+
+private const val LAZY =
+    " Make the laziest version that still gets it off the pile: a reply of one or two lines, the choice that needs no follow-up, " +
+        "or a first step of two minutes. If honestly the laziest and best thing is not to do it at all, say so: " +
+        "the finished version then starts with \"Don't do it.\" and gives one sentence why."
+
+/** At most this many items of the pile go to Gemma when it looks for the easiest one. */
+private const val LOOK_AT = 30
 
 /** The name of the node that the run pauses before, until the person answers. */
 const val SWALLOW = "swallow"
@@ -92,7 +116,8 @@ private const val VOICE =
 
 /**
  * The graph of one wake: look at the pile, chew the oldest item into its finished version, wait for
- * the person's answer, swallow, and write a line of the diary.
+ * the person's answer, swallow, and write a line of the diary. A [Sloth.lazy] wake first asks the
+ * model which item is the easiest, and chews it the laziest way.
  *
  * @param model prepares the finished version of an item. It may think as long as it likes.
  * @param diarist writes the diary line, a small job: a model that does not think is enough.
@@ -126,13 +151,32 @@ fun sloth(
                     bite = null,
                     answer = null,
                     emptied = false,
+                    why = null,
                 )
+            }
+
+        val pick =
+            node(
+                "pick",
+                work = { sloth ->
+                    val items = pile.items()
+                    // Another item than last time, unless there is no other.
+                    val choices = items.filter { it != sloth.lastLazy }.ifEmpty { items }.take(LOOK_AT)
+                    if (choices.size == 1) return@node Pick(1, "It is the only one there.") to choices
+                    val pick = model.ask<Pick>(pickPrompt(choices), system = VOICE)
+                    check(pick.number in 1..choices.size) { "Gemma picked number ${pick.number} of ${choices.size}." }
+                    pick to choices
+                },
+                retry = Retry(attempts = 2),
+            ) { sloth, (pick, choices) ->
+                val item = choices[pick.number - 1]
+                sloth.copy(item = item, why = pick.why.trim(), lastLazy = item)
             }
 
         val chew =
             node(
                 "chew",
-                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about()), system = CHEF) },
+                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about()), system = if (sloth.lazy) CHEF + LAZY else CHEF) },
                 retry = Retry(attempts = 2),
             ) { sloth, bite -> sloth.copy(bite = bite) }
 
@@ -170,7 +214,14 @@ fun sloth(
             ) { sloth, line -> sloth.copy(diary = sloth.diary + DiaryEntry(sloth.today, line.trim()), item = null) }
 
         START then wake
-        conditionalEdge(wake, targets = setOf(chew, NodeRef.END)) { sloth -> if (sloth.rest == Rest.NONE) chew else NodeRef.END }
+        conditionalEdge(wake, targets = setOf(pick, chew, NodeRef.END)) { sloth ->
+            when {
+                sloth.rest != Rest.NONE -> NodeRef.END
+                sloth.lazy -> pick
+                else -> chew
+            }
+        }
+        pick then chew
         chew then swallow
         conditionalEdge(swallow, targets = setOf(chew, diary)) { sloth -> if (sloth.bite == null) chew else diary }
         diary then NodeRef.END
@@ -187,6 +238,10 @@ private fun chewPrompt(sloth: Sloth, about: String): String {
     return "${me}Here is an item of my backlog. Make it done for me.\n\n${sloth.item}$tried"
 }
 
+private fun pickPrompt(items: List<String>): String =
+    "Here is my backlog. Which item is the easiest to get off it, with the least effort? Reply with its number and why.\n\n" +
+        items.mapIndexed { index, item -> "${index + 1}. ${item.replace("\n", " ").take(300)}" }.joinToString("\n")
+
 private fun diaryPrompt(sloth: Sloth): String {
     val meal = sloth.meals.last()
     val said =
@@ -197,8 +252,9 @@ private fun diaryPrompt(sloth: Sloth): String {
             Answer.AGAIN -> error("A meal is never an AGAIN.")
         }
     val sleep = if (sloth.sleptDays > 1) "You slept ${sloth.sleptDays} days before this wake. " else ""
+    val lazy = if (sloth.why != null) "You picked it yourself, the easiest one on the pile, and did it the lazy way. " else ""
     val last = if (sloth.emptied) "It was the last item: the pile is empty now, you ate everything, and you can sleep on top of your branch. " else ""
     return "Write today's line of your diary: one or two short sentences, in the first person, no more than 30 words. " +
         "${sleep}Today you ate one item of the pile, a ${meal.kind.name.lowercase()} called \"${meal.title}\", and $said. " +
-        "${last}You have eaten ${sloth.roundness} items in all. Reply with the line only."
+        "$lazy${last}You have eaten ${sloth.roundness} items in all. Reply with the line only."
 }

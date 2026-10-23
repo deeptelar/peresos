@@ -138,16 +138,19 @@ internal class SlothModel(
 
     fun isFull(sloth: Sloth?): Boolean = sloth != null && sloth.roundness > 0 && pile.isEmpty()
 
-    /** Wakes it: it looks at the pile and chews the oldest item, or continues a wake that stopped halfway. */
-    fun wake() =
+    /**
+     * Wakes it: it looks at the pile and chews the oldest item, or continues a wake that stopped halfway.
+     * A [lazy] wake picks the easiest item instead, and does it the laziest way.
+     */
+    fun wake(lazy: Boolean = false) =
         awake {
             ateHere = false
             val snapshot = session.snapshot.value
             when {
-                snapshot is GraphSnapshot.Completed -> session.start(snapshot.state.copy(today = today()))
+                snapshot is GraphSnapshot.Completed -> session.start(snapshot.state.copy(today = today(), lazy = lazy))
                 // A wake that stopped halfway, say because Ollama was not running, continues from its last step.
                 (snapshot is GraphSnapshot.Interrupted || snapshot is GraphSnapshot.Stopped) && snapshot.state != null -> session.resume()
-                else -> session.start(Sloth(today()))
+                else -> session.start(Sloth(today(), lazy = lazy))
             }
         }
 

@@ -25,9 +25,13 @@ suspend fun main(args: Array<String>) {
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
-        null, "--hungry" -> {
+        null, "--hungry", "--lazy" -> {
             val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Answer it there.")
-            awake.use { HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about)) } }
+            awake.use {
+                HttpClient(CIO).use { client ->
+                    wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about), lazy = "--lazy" in args)
+                }
+            }
         }
         else -> println(USAGE)
     }
@@ -38,15 +42,19 @@ internal object Unused : ChatModel {
     override suspend fun chat(request: ChatRequest): ChatResponse = error("This command does not call a model.")
 }
 
-private suspend fun wake(graph: CompiledGraph<Sloth>) {
+/** Wakes it. A [lazy] wake picks the easiest item of the pile, not the oldest, and does it the laziest way. */
+private suspend fun wake(
+    graph: CompiledGraph<Sloth>,
+    lazy: Boolean,
+) {
     val config = home.config
     val today = LocalDate.now().toString()
     var result =
         when (val last = graph.lastResult(config)) {
-            null -> chewing { graph.invoke(Sloth(today), config) }
+            null -> chewing(lazy) { graph.invoke(Sloth(today, lazy = lazy), config) }
             is GraphResult.Interrupted if SWALLOW in last.nextNodes -> last.also { say("Peresós still has this in its mouth, from ${it.state.today}.") }
-            is GraphResult.Interrupted -> chewing { graph.resume(config) } // the last wake stopped halfway, say Ollama was not running
-            is GraphResult.Completed -> chewing { graph.invoke(last.state.copy(today = today), config) }
+            is GraphResult.Interrupted -> chewing(last.state.lazy) { graph.resume(config) } // the last wake stopped halfway, say Ollama was not running
+            is GraphResult.Completed -> chewing(lazy) { graph.invoke(last.state.copy(today = today, lazy = lazy), config) }
         }
 
     while (result is GraphResult.Interrupted) {
@@ -57,14 +65,18 @@ private suspend fun wake(graph: CompiledGraph<Sloth>) {
     report(result.state)
 }
 
-private suspend fun <T> chewing(run: suspend () -> T): T {
-    say("Peresós wakes up and looks at the pile. Slowly.")
+private suspend fun <T> chewing(
+    lazy: Boolean,
+    run: suspend () -> T,
+): T {
+    say(if (lazy) "Peresós wakes up and looks for the easiest thing on the pile. Lazily." else "Peresós wakes up and looks at the pile. Slowly.")
     return run()
 }
 
 private fun askFor(sloth: Sloth): Answer? {
     val bite = checkNotNull(sloth.bite)
     println()
+    sloth.why?.let { say("It picked the easiest one: $it") }
     say("It chewed this one: ${bite.title}  (${bite.kind.name.lowercase()})")
     println()
     wrap(bite.finished).forEach { println("    $it") }
@@ -220,6 +232,7 @@ private val USAGE =
       peresos feed "text"     put something you avoid on the pile (or pipe text into it)
       peresos about "fact"    tell it something about you that helps, like when you are home
       peresos                 wake it: it eats the oldest item and shows you the finished version
+      peresos --lazy          it picks the easiest item instead, and does it the laziest way
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)

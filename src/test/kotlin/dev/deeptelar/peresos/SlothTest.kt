@@ -171,6 +171,73 @@ class SlothTest {
         }
 
     @Test
+    fun `a lazy wake picks the easiest item, and chews it the laziest way`() =
+        runTest {
+            val pile = MemoryPile("Do the tax return", "Reply to Marta: is Friday still on?", "Decide on the gym")
+            val model = ScriptedChatModel {
+                answers(Pick(2, "A yes is one word."))
+                answers(reply)
+                says("Picked the easy one. Very wise of me.")
+            }
+            val config = config()
+            val graph = sloth(model, pile)
+
+            val chewed = graph.invoke(Sloth("2026-10-23", lazy = true), config)
+
+            assertIs<GraphResult.Interrupted<Sloth>>(chewed)
+            assertEquals("Reply to Marta: is Friday still on?", chewed.state.item)
+            assertEquals("A yes is one word.", chewed.state.why)
+            assertTrue("1. Do the tax return" in model.requests[0].messages.last().text)
+            assertTrue("laziest" in model.requests[1].system.orEmpty(), "it asks for the lazy version")
+            assertTrue("Don't do it." in model.requests[1].system.orEmpty(), "not doing it is a lazy answer too")
+
+            val state = graph.resume(config) { it.copy(answer = Answer.YES) }.state
+            assertEquals(listOf("Do the tax return", "Decide on the gym"), pile.items)
+            assertTrue("the easiest one on the pile" in model.requests[2].messages.last().text)
+            assertEquals(1, state.roundness)
+        }
+
+    @Test
+    fun `the next lazy wake picks another item than the last one`() =
+        runTest {
+            val pile = MemoryPile("Do the tax return", "Reply to Marta: is Friday still on?", "Decide on the gym")
+            val model = ScriptedChatModel {
+                answers(Pick(2, "A yes is one word."))
+                answers(reply)
+                says("Later. Everything is better later.")
+                answers(Pick(1, "Cancelling is easy."))
+                answers(Bite(Kind.DECISION, "The gym", "Don't do it. You never go."))
+            }
+            val config = config()
+            val graph = sloth(model, pile)
+            graph.invoke(Sloth("2026-10-23", lazy = true), config)
+            val later = graph.resume(config) { it.copy(answer = Answer.LATER) }.state
+
+            val next = graph.invoke(later.copy(today = "2026-10-24", lazy = true), config)
+
+            val asked = model.requests[3].messages.last().text
+            assertTrue("Marta" !in asked, "the item it picked last time is not offered again")
+            assertEquals("Do the tax return", next.state.item)
+        }
+
+    @Test
+    fun `a lazy wake with one item asks nothing, and a wrong number is asked again`() =
+        runTest {
+            val alone = ScriptedChatModel { answers(reply) }
+            val one = sloth(alone, MemoryPile("Reply to Marta")).invoke(Sloth("2026-10-23", lazy = true), config())
+            assertEquals("Reply to Marta", one.state.item)
+            assertEquals(1, alone.requests.size, "only the chew")
+
+            val confused = ScriptedChatModel {
+                answers(Pick(7, "The seventh, obviously."))
+                answers(Pick(1, "This one."))
+                answers(reply)
+            }
+            val two = sloth(confused, MemoryPile("Reply to Marta", "Decide on the gym")).invoke(Sloth("2026-10-23", lazy = true), config())
+            assertEquals("Reply to Marta", two.state.item)
+        }
+
+    @Test
     fun `the portrait grows from a baby into a big round sloth`() {
         val phases = listOf(0, 1, 2, 4, 5, 9, 10, 40).map { Portrait.phase(it) }
         val sizes = Portrait.Phase.entries.map { phase -> Portrait.frames(listOf(0, 2, 5, 10)[phase.ordinal]).first().size }

@@ -26,6 +26,14 @@ Then it waits for you:
 - **Enter**: decide another day. It keeps the item in its mouth. Close the terminal, come back
   tomorrow, and it asks again without calling the model a second time.
 
+Feeling lazy? **`peresos --lazy`** (or **Something easy** in the window) lets the sloth do what it
+does best. Gemma looks at the whole pile, picks the easiest item and tells you why ("A yes is one
+word."), then prepares the laziest version that still gets it off the pile: a reply of one or two
+lines, the choice with no follow-up, a two-minute first step. Sometimes the laziest answer is honest:
+*Don't do it*, with one sentence why, and you bin it. The next lazy wake picks a different item, so
+one you put off with "later" doesn't come back every time. The normal wake still eats the oldest
+item, so the hard ones get their turn.
+
 It eats one item a day at most. Skip a few days and it simply sleeps, then tells you how long. It
 never nags. It writes a line in its diary after every meal, and grows up as the pile shrinks: a baby
 that kicks its little legs, a young sloth chewing a leaf, a grown one yawning, and after ten items,
@@ -51,6 +59,7 @@ peresos about "I work from home on Tuesdays and Thursdays"   # once: facts it us
 peresos feed "the message, decision or note you keep avoiding"
 pbpaste | peresos feed                                      # or pipe it in (xclip -o on Linux)
 peresos                                                      # wake it: it eats the oldest item
+peresos --lazy                                               # or the easiest one, done the laziest way
 peresos pile                                                 # what is still on the pile
 peresos diary                                                # what it wrote about its meals
 peresos wear sunglasses coffee                               # dress it up (peresos wear lists it all)
@@ -113,6 +122,7 @@ uses it from Maven Central like any other.
 flowchart LR
     S((start)) --> wake
     wake -->|hungry and the pile has something| chew
+    wake -->|lazy| pick --> chew
     wake -->|already ate today, or nothing to eat| E((end))
     chew -->|"waits for your answer"| swallow
     swallow -->|another try| chew
@@ -127,7 +137,8 @@ flowchart LR
   next `peresos` resumes it from the checkpoint with your answer.
 - **Gemma answers with a typed value**: `chew` asks for a `Bite` (kind, title, finished text) with
   `ask<Bite>`, which gives the model the JSON schema of the class and asks again when an answer
-  does not fit.
+  does not fit. A lazy wake's `pick` asks for a `Pick` (the number of the easiest item and why) the
+  same way, and a number that is not on the list counts as a failed try.
 - **The pile changes exactly once**: `swallow` edits the pile and writes the file inside an
   `effect`, which Telar saves with the step, so a crash halfway never eats an item twice.
 - **Thinking where it helps**: `chew` lets Gemma think; the diary line uses the same model with

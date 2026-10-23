@@ -167,6 +167,7 @@ private fun ColumnScope.Now(
             Title("Munch, munch...")
             Line(
                 when (snapshot.nodes.firstOrNull()) {
+                    "pick" -> "It looks for the easiest thing on the pile. Lazily."
                     "chew" -> "It chews. Gemma is preparing the finished version, slowly: 10 to 60 seconds."
                     "swallow" -> "It swallows."
                     "diary" -> "It writes a line in its diary."
@@ -175,11 +176,11 @@ private fun ColumnScope.Now(
             )
             PixelProgress(tick)
         }
-        snapshot is GraphSnapshot.Interrupted && SWALLOW in snapshot.nextNodes && sloth?.bite != null -> Bite(model, sloth.bite)
+        snapshot is GraphSnapshot.Interrupted && SWALLOW in snapshot.nextNodes && sloth?.bite != null -> Bite(model, sloth.bite, sloth.why)
         snapshot is GraphSnapshot.Interrupted || snapshot is GraphSnapshot.Stopped -> {
             Title("Hmm.")
             Line(model.trouble ?: "The last wake stopped halfway.")
-            PixelButton("Try again", Ink.yellow, model::wake)
+            PixelButton("Try again", Ink.yellow, { model.wake() })
         }
         else -> Rested(model, sloth)
     }
@@ -190,7 +191,9 @@ private fun ColumnScope.Now(
 private fun ColumnScope.Bite(
     model: SlothModel,
     bite: Bite,
+    why: String?,
 ) {
+    why?.let { Line("It picked the easiest one: $it") }
     PixelText("It chewed this one  ·  ${bite.kind.name.lowercase()}", size = SMALL, color = Ink.faint)
     Title(bite.title)
     // A long version scrolls in its own box, so the buttons under it stay in sight.
@@ -245,8 +248,11 @@ private fun ColumnScope.Rested(
             model.pile.isEmpty() -> "The pile is empty. Feed it something below."
             else -> null
         }
-    PixelButton("Wake it", Ink.green, model::wake, enabled = reason == null)
-    reason?.let { Hint(it) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PixelButton("Wake it", Ink.green, { model.wake() }, enabled = reason == null)
+        PixelButton("Something easy", Ink.yellow, { model.wake(lazy = true) }, enabled = reason == null)
+    }
+    reason?.let { Hint(it) } ?: Hint("Wake it eats the oldest item. Something easy lets it pick the easiest one, done the laziest way.")
 }
 
 @Composable

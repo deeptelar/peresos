@@ -143,7 +143,8 @@ class SoakTest {
                 12 to ("feed" to { feed(items.random(random)) }),
                 3 to ("feed blank" to { feed("   ") }),
                 3 to ("feed odd" to { feed(oddItems.random(random)) }),
-                18 to ("wake" to { wake() }),
+                12 to ("wake" to { wake() }),
+                8 to ("something easy" to { wake(lazy = true) }),
                 14 to ("take it" to { answer(Answer.YES) }),
                 8 to ("bin it" to { answer(Answer.NO) }),
                 6 to ("later" to { answer(Answer.LATER) }),
@@ -174,21 +175,39 @@ class SoakTest {
         if (text.isNotBlank()) pile += text.trim()
     }
 
-    private fun ComposeUiTest.wake() {
-        val button = if (stopped) "Try again" else "Wake it"
+    /** Wake it, or Something easy when [lazy], or Try again after Ollama stopped it halfway. */
+    private fun ComposeUiTest.wake(lazy: Boolean = false) {
+        val button = if (stopped) "Try again" else if (lazy) "Something easy" else "Wake it"
         if (onAllNodesWithText(button).fetchSemanticsNodes().isEmpty()) return // it holds a bite: there is no button to wake it
         val canWake = stopped || (pile.isNotEmpty() && !ateToday())
         if (!canWake) return onNodeWithText(button).assertIsNotEnabled().let {}
+        val resuming = stopped
+        val lastLazy = state()?.lastLazy
+        val picking = if (resuming) "pick" in pending() else lazy
         val started = System.currentTimeMillis()
         click(button)
         settle()
-        if (!stopped) {
+        if (!resuming) {
             lastWake?.let { assertEquals(ChronoUnit.DAYS.between(it, today).toInt(), state()?.sleptDays, "the days it slept") }
             lastWake = today
-            mouth = pile.first()
         }
         afterRun()
+        when {
+            picking && stopped -> mouth = null // Ollama stopped before it could pick
+            picking -> mouth = picked(lastLazy)
+            !resuming -> mouth = pile.first()
+        }
         if (mouth != null && !stopped && diaryOwed == 0) chewTimes += System.currentTimeMillis() - started
+    }
+
+    /** The item a lazy wake picked: another than [lastLazy], and with the scripted model the shortest. */
+    private fun picked(lastLazy: String?): String {
+        val item = assertNotNull(state()?.item)
+        val choices = pile.filter { it != lastLazy }.ifEmpty { pile }.take(30)
+        assertTrue(item in choices, "it picked an item of the pile, and not the one of last time")
+        if (!gemma) assertEquals(choices.minBy { it.replace("\n", " ").take(300).length }, item, "it picked the easiest")
+        assertNotNull(state()?.why, "it says why")
+        return item
     }
 
     private fun ComposeUiTest.answer(answer: Answer) {
@@ -317,14 +336,17 @@ class SoakTest {
                         last == null -> terminal.invoke(Sloth(today.toString()), config)
                         last is GraphResult.Interrupted && SWALLOW in last.nextNodes -> last
                         last is GraphResult.Interrupted -> terminal.resume(config)
-                        else -> terminal.invoke(last.state.copy(today = today.toString()), config)
+                        else -> terminal.invoke(last.state.copy(today = today.toString(), lazy = false), config)
                     }
                 if (woke) {
                     lastWake?.let { assertEquals(ChronoUnit.DAYS.between(it, today).toInt(), result.state.sleptDays) }
                     lastWake = today
                     if (result is GraphResult.Interrupted) mouth = pile.first()
                 }
-                if (last is GraphResult.Interrupted && SWALLOW !in last.nextNodes) stopped = false
+                if (last is GraphResult.Interrupted && SWALLOW !in last.nextNodes) {
+                    stopped = false
+                    if (mouth == null && result is GraphResult.Interrupted) mouth = result.state.item // it picked, after Ollama came back
+                }
                 while (result is GraphResult.Interrupted && SWALLOW in result.nextNodes) {
                     val answer = (Answer.entries + null).random(random) ?: break // Enter: it keeps the bite for another day
                     result = terminal.resume(config) { it.copy(answer = answer) }
@@ -391,6 +413,7 @@ class SoakTest {
                 val bite = assertNotNull(sloth.bite)
                 assertExists(bite.title)
                 assertExists("Take it")
+                sloth.why?.let { assertExists("It picked the easiest one: $it") }
                 if (!gemma) assertTrue(bite.finished.startsWith("Done: ${mouth!!.lines().first()}"), "it chewed the item in its mouth")
                 assertTrue(mouth!! in kitchen.lastChew, "Gemma was asked about the item in its mouth")
                 kitchen.aboutThen.lines().filter { it.isNotBlank() }.forEach { assertTrue(it in kitchen.lastChew, "it told Gemma: $it") }
@@ -399,7 +422,14 @@ class SoakTest {
                 assertIs<GraphSnapshot.Completed<Sloth>>(snapshot)
                 assertExists("Wake it")
                 val wakeIt = onNodeWithText("Wake it")
-                if (pile.isNotEmpty() && !ateToday()) wakeIt.assertIsEnabled() else wakeIt.assertIsNotEnabled()
+                val easy = onNodeWithText("Something easy")
+                if (pile.isNotEmpty() && !ateToday()) {
+                    wakeIt.assertIsEnabled()
+                    easy.assertIsEnabled()
+                } else {
+                    wakeIt.assertIsNotEnabled()
+                    easy.assertIsNotEnabled()
+                }
                 val meal = sloth.meals.lastOrNull()
                 val title =
                     when {
@@ -547,6 +577,13 @@ private class Kitchen(
         if (down) throw ConnectException("Connection refused")
         val prompt = request.messages.last().text
         val chewing = "Make it done for me" in prompt
+        if ("Which item is the easiest" in prompt) {
+            chef?.let { return it.chat(request) }
+            // A lazy sloth picks the shortest.
+            val items = prompt.lines().mapNotNull { Regex("^(\\d+)\\. (.*)$").find(it)?.groupValues }
+            val shortest = items.minBy { it[2].length }[1].toInt()
+            return ChatResponse(ChatMessage.Assistant(Json.encodeToString(Pick.serializer(), Pick(shortest, "It is the shortest."))))
+        }
         if (chewing) {
             lastChew = prompt
             aboutThen = about()
