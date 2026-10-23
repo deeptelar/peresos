@@ -6,7 +6,8 @@ import kotlin.math.floor
 /**
  * The sloth as pixel art, hanging from its branch. It is born a baby and grows bigger and rounder
  * with every item it finishes, and in each phase it does something different while you look. When
- * it has eaten the whole pile, it climbs on top of its branch and sleeps there.
+ * it has eaten the whole pile, it climbs on top of its branch and sleeps there. It can wear the
+ * items of the [Item] wardrobe.
  */
 object Portrait {
     /** How grown up the sloth is, and what it does in its animation. */
@@ -29,26 +30,28 @@ object Portrait {
     fun lines(
         roundness: Int,
         onTop: Boolean = false,
-    ): List<String> = frames(roundness, onTop).first()
+        wearing: Collection<Item> = emptyList(),
+    ): List<String> = frames(roundness, onTop, wearing).first()
 
     /**
      * The frames of the animation, to show one after another and then again. All have the same size.
      *
      * @param onTop it ate the whole pile, and sleeps lying on top of its branch instead of hanging below it.
+     * @param wearing the items it has on.
      */
     fun frames(
         roundness: Int,
         onTop: Boolean = false,
+        wearing: Collection<Item> = emptyList(),
     ): List<List<String>> {
         val build = builds.getValue(phase(roundness))
-        if (onTop) return asleep.map { pose -> drawOnTop(build, pose).render() }
-        return poses.getValue(phase(roundness)).map { pose -> draw(build, pose).render() }
+        val room = wearing.maxOfOrNull { it.room } ?: 0
+        val items = wearing.sortedBy { it.ordinal }
+        if (onTop) return asleep.mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room).render() }
+        return poses.getValue(phase(roundness)).mapIndexed { tick, pose -> draw(build, pose, tick, items, room).render() }
     }
 
-    /** An oval around a column, at height [y]. */
-    private class Oval(val y: Double, val rx: Double, val ry: Double)
-
-    /** The size of the picture, and of the head and the body in it, in pixels. */
+    /** The size of the picture, and of the head and the body in it, in pixels. Both ovals are around the middle column. */
     private class Build(val width: Int, val height: Int, val head: Oval, val body: Oval, val arm: Int, val eyes: Int)
 
     // A baby is mostly head. The body grows faster than the head, until it is the roundest thing on the branch.
@@ -81,43 +84,55 @@ object Portrait {
     /** Fast asleep and breathing slowly, with the z's floating up. */
     private val asleep = poses.getValue(Phase.ROUND)
 
+    /** Hanging below the branch. Items that need room get it above the branch, where a mug can stand. */
     private fun draw(
         build: Build,
         pose: Pose,
+        tick: Int,
+        items: List<Item>,
+        room: Int,
     ): Canvas {
-        val canvas = Canvas(build.width, build.height)
+        val canvas = Canvas(build.width, build.height, top = room)
         val cx = build.width / 2 // the face sits on the two middle columns, cx - 1 and cx
         val head = build.head
         val body = build.body
         val breath = pose.breath * 0.5
 
-        canvas.row(0, 'b')
-        canvas.row(1, 'B')
+        canvas.row(0, BRANCH)
+        canvas.row(1, BRANCH_SHADOW)
         // The arms reach up from the shoulders to the branch, where the claws hold on.
         val claw = floor(cx - head.rx).toInt() - build.arm
         canvas.arm(claw, 1, floor(cx - body.rx * 0.8).toInt(), (body.y - body.ry * 0.5).toInt(), build.arm)
-        repeat(build.arm) { canvas.both(claw + it, 1, 'C') }
+        repeat(build.arm) { canvas.both(claw + it, 1, CLAW) }
         // Two short legs hang below. A baby kicks them, one down while the other goes up.
         val foot = floor(body.y + body.ry).toInt() + 1
         val leg = floor(cx - body.rx * 0.5).toInt() - 1
         canvas.leg(leg, foot + pose.kick)
         canvas.leg(build.width - 2 - leg, foot - pose.kick)
 
-        canvas.oval(cx.toDouble(), body.y, body.rx + breath, body.ry + breath, 'F')
-        canvas.oval(cx.toDouble(), body.y + 0.5, body.rx * 0.75 + breath, body.ry * 0.75 + breath, 'L', over = 'F')
+        canvas.oval(cx.toDouble(), Oval(body.y, body.rx + breath, body.ry + breath), FUR)
+        canvas.oval(cx.toDouble(), Oval(body.y + 0.5, body.rx * 0.75 + breath, body.ry * 0.75 + breath), BELLY, over = FUR)
         canvas.closeGaps(head.y.toInt(), body.y.toInt())
         canvas.head(cx, head)
         canvas.face(cx, head, build.eyes, pose)
         canvas.z(floor(cx + head.rx).toInt() + build.arm + 2, head.y.toInt() / 2, pose)
+        val spot = Spot(cx, head, build.eyes, branch = 0, shelf = build.width - 6, tick = tick)
+        items.forEach { canvas.wear(it, spot) }
         return canvas
     }
 
-    /** Lying on its belly on top of the branch, with its arms and legs hanging down on both sides of it. */
+    /**
+     * Lying on its belly on top of the branch, with its arms and legs hanging down on both sides of it.
+     * Items that need room get it to the right, on a longer branch.
+     */
     private fun drawOnTop(
         build: Build,
         pose: Pose,
+        tick: Int,
+        items: List<Item>,
+        room: Int,
     ): Canvas {
-        val canvas = Canvas(build.width, build.height)
+        val canvas = Canvas(build.width, build.height, right = room)
         val branch = build.height - 5
         val hx = build.width - ceil(build.head.rx).toInt() // the head at the right end, the face on columns hx - 1 and hx
         val head = Oval(branch - build.head.ry + 1, build.head.rx, build.head.ry)
@@ -125,16 +140,18 @@ object Portrait {
         val tall = build.body.rx * 0.8 + pose.breath * 0.5
         val bodyX = maxOf(length + 0.5, hx - head.rx - length + 2)
 
-        canvas.row(branch, 'b')
-        canvas.row(branch + 1, 'B')
+        canvas.row(branch, BRANCH)
+        canvas.row(branch + 1, BRANCH_SHADOW)
         val leg = (bodyX - length * 0.5).toInt()
         for (x in listOf(leg, leg + build.arm + 1, hx - 2 - build.arm, hx + 2)) {
-            for (y in branch - 1..branch + 3) repeat(build.arm) { canvas[x + it, y] = if (y == branch + 3) 'C' else 'F' }
+            for (y in branch - 1..branch + 3) repeat(build.arm) { canvas[x + it, y] = if (y == branch + 3) CLAW else FUR }
         }
-        canvas.oval(bodyX, branch + 0.3 - tall, length, tall, 'F')
+        canvas.oval(bodyX, Oval(branch + 0.3 - tall, length, tall), FUR)
         canvas.head(hx, head)
         canvas.face(hx, head, build.eyes, pose)
         canvas.z(hx + 1, floor(head.y - head.ry).toInt() / 2 - 1, pose)
+        val spot = Spot(hx, head, build.eyes, branch = branch, shelf = build.width + 1, tick = tick)
+        items.forEach { canvas.wear(it, spot) }
         return canvas
     }
 
@@ -143,9 +160,9 @@ object Portrait {
         cx: Int,
         head: Oval,
     ) {
-        oval(cx.toDouble(), head.y, head.rx, head.ry, 'F')
-        oval(cx.toDouble(), head.y - 0.5, head.rx - 1, head.ry - 1, 'd', over = 'F')
-        oval(cx.toDouble(), head.y + 0.5, head.rx - 1, head.ry - 1.2, 'M', over = 'd')
+        oval(cx.toDouble(), head, FUR)
+        oval(cx.toDouble(), Oval(head.y - 0.5, head.rx - 1, head.ry - 1), FUR_DARK, over = FUR)
+        oval(cx.toDouble(), Oval(head.y + 0.5, head.rx - 1, head.ry - 1.2), FACE, over = FUR_DARK)
     }
 
     /** The face around column [cx]: eyes in the dark stripes that run down from them, the nose, and the mouth. */
@@ -157,27 +174,27 @@ object Portrait {
     ) {
         val eye = head.y.toInt()
         val eyeX = cx - 1 - eyes
-        both(eyeX, eye, if (pose.closed) 'E' else 'o', cx)
-        both(eyeX - 1, eye, 'E', cx)
-        both(eyeX - 2, eye + 1, 'E', cx)
-        both(cx - 1, eye + 1, 'N', cx)
+        both(eyeX, eye, if (pose.closed) STRIPE else EYE, cx)
+        both(eyeX - 1, eye, STRIPE, cx)
+        both(eyeX - 2, eye + 1, STRIPE, cx)
+        both(cx - 1, eye + 1, NOSE, cx)
         val mouth = eye + 2
         when (pose.mouth) {
             0 -> {
-                both(cx - 2, mouth, 'm', cx)
-                both(cx - 1, mouth + 1, 'm', cx)
+                both(cx - 2, mouth, SMILE, cx)
+                both(cx - 1, mouth + 1, SMILE, cx)
             }
             1 -> {
-                both(cx - 2, mouth, 'm', cx)
-                both(cx - 1, mouth, 'O', cx)
+                both(cx - 2, mouth, SMILE, cx)
+                both(cx - 1, mouth, MOUTH, cx)
             }
             else -> {
-                both(cx - 1, mouth, 'O', cx)
-                both(cx - 1, mouth + 1, 'P', cx)
+                both(cx - 1, mouth, MOUTH, cx)
+                both(cx - 1, mouth + 1, TONGUE, cx)
             }
         }
-        repeat(pose.leaf) { this[cx + 1 + it, mouth + 1] = 'G' }
-        if (pose.leaf == 3) this[cx + 3, mouth] = 'g'
+        repeat(pose.leaf) { this[cx + 1 + it, mouth + 1] = LEAF }
+        if (pose.leaf == 3) this[cx + 3, mouth] = LEAF_DARK
     }
 
     /** Asleep, the z's float up and to the right from column [x] and [line]. */
@@ -191,140 +208,59 @@ object Portrait {
         for (stage in listOf(pose.z % 4, (pose.z + 2) % 4)) stages[stage].let { (sx, sy, letter) -> if (sy >= 0) texts[sx to sy] = letter }
     }
 
-    private class Canvas(
-        val width: Int,
-        val height: Int,
+    /** A left arm from the claw down to the shoulder, and the right one mirrored. */
+    private fun Canvas.arm(
+        fromX: Int,
+        fromY: Int,
+        toX: Int,
+        toY: Int,
+        thickness: Int,
     ) {
-        private val pixels = Array(height) { CharArray(width) { '.' } }
-
-        /** Letters drawn in a whole character, by column and line. */
-        val texts = mutableMapOf<Pair<Int, Int>, Char>()
-
-        operator fun set(
-            x: Int,
-            y: Int,
-            pixel: Char,
-        ) {
-            if (x in 0 until width && y in 0 until height) pixels[y][x] = pixel
+        val steps = maxOf(toY - fromY, 1) * 2
+        for (step in 0..steps) {
+            val x = fromX + (toX - fromX) * step / steps
+            val y = fromY + (toY - fromY) * step / steps
+            repeat(thickness) { both(x + it, y, FUR) }
         }
-
-        /** A pixel and its mirror on the other side of column [center], which falls between [center] - 1 and [center]. */
-        fun both(
-            x: Int,
-            y: Int,
-            pixel: Char,
-            center: Int = width / 2,
-        ) {
-            this[x, y] = pixel
-            this[2 * center - 1 - x, y] = pixel
-        }
-
-        fun row(
-            y: Int,
-            pixel: Char,
-        ) = repeat(width) { this[it, y] = pixel }
-
-        fun oval(
-            x: Double,
-            y: Double,
-            rx: Double,
-            ry: Double,
-            pixel: Char,
-            over: Char? = null,
-        ) {
-            for (py in 0 until height) {
-                for (px in 0 until width) {
-                    val dx = (px + 0.5 - x) / rx
-                    val dy = (py + 0.5 - y) / ry
-                    if (dx * dx + dy * dy <= 1.0 && (over == null || pixels[py][px] == over)) pixels[py][px] = pixel
-                }
-            }
-        }
-
-        /** A left arm from the claw down to the shoulder, and the right one mirrored. */
-        fun arm(
-            fromX: Int,
-            fromY: Int,
-            toX: Int,
-            toY: Int,
-            thickness: Int,
-        ) {
-            val steps = maxOf(toY - fromY, 1) * 2
-            for (step in 0..steps) {
-                val x = fromX + (toX - fromX) * step / steps
-                val y = fromY + (toY - fromY) * step / steps
-                repeat(thickness) { both(x + it, y, 'F') }
-            }
-        }
-
-        /** Fills the holes of one or two pixels between an arm and the body, in rows [fromY] to [toY]. */
-        fun closeGaps(
-            fromY: Int,
-            toY: Int,
-        ) {
-            for (y in fromY..toY) {
-                for (x in 1 until width - 1) {
-                    val right = pixels[y][x + 1] != '.' || (x + 2 < width && pixels[y][x + 2] != '.')
-                    if (pixels[y][x] == '.' && pixels[y][x - 1] != '.' && right) pixels[y][x] = 'F'
-                }
-            }
-        }
-
-        /** A leg two pixels wide, hanging down to its claws at [foot]. */
-        fun leg(
-            x: Int,
-            foot: Int,
-        ) {
-            for (y in foot - 3..foot) {
-                this[x, y] = if (y == foot) 'C' else 'F'
-                this[x + 1, y] = if (y == foot) 'C' else 'F'
-            }
-        }
-
-        /** The lines to print: two pixels in each character, with the colors of a 24-bit terminal. */
-        fun render(): List<String> =
-            (0 until height step 2).map { y ->
-                (0 until width).joinToString("") { x ->
-                    val letter = texts[x to y / 2]?.takeIf { pixels[y][x] == '.' && pixels[y + 1][x] == '.' }
-                    if (letter != null) "$RESET${fg(colors.getValue('z'))}$letter" else cell(colors[pixels[y][x]], colors[pixels[y + 1][x]])
-                } + RESET
-            }
     }
 
-    private val colors =
-        mapOf(
-            'b' to 0xB07440, // branch
-            'B' to 0x6E4528, // branch, shadow
-            'C' to 0xE2B07A, // claws
-            'F' to 0x9C7A5B, // fur
-            'd' to 0x6F5440, // fur, dark
-            'M' to 0xE9DCC0, // face
-            'E' to 0x4A2F1C, // the dark stripes that run down from the eyes, and closed eyes
-            'o' to 0x15131F, // eyes
-            'N' to 0x2A1E16, // nose
-            'm' to 0x6E4528, // smile
-            'O' to 0x3A1E1A, // open mouth
-            'P' to 0xD98A8A, // tongue
-            'L' to 0xC9A27E, // belly
-            'G' to 0x6B9A3E, // leaf
-            'g' to 0x48702A, // leaf, dark
-            'z' to 0xEFE6D2, // the z's of its sleep
-        )
-
-    private fun cell(
-        top: Int?,
-        bottom: Int?,
-    ): String =
-        when {
-            top == null && bottom == null -> "$RESET "
-            top == null -> "$RESET${fg(bottom!!)}▄"
-            bottom == null -> "$RESET${fg(top)}▀"
-            else -> "${fg(top)}${bg(bottom)}▀"
+    /** Fills the holes of one or two pixels between an arm and the body, in rows [fromY] to [toY]. */
+    private fun Canvas.closeGaps(
+        fromY: Int,
+        toY: Int,
+    ) {
+        for (y in fromY..toY) {
+            for (x in 1 until width - 1) {
+                val right = this[x + 1, y] != EMPTY || this[x + 2, y] != EMPTY
+                if (this[x, y] == EMPTY && this[x - 1, y] != EMPTY && right) this[x, y] = FUR
+            }
         }
+    }
 
-    private fun fg(rgb: Int) = "\u001B[38;2;${rgb shr 16 and 255};${rgb shr 8 and 255};${rgb and 255}m"
+    /** A leg two pixels wide, hanging down to its claws at [foot]. */
+    private fun Canvas.leg(
+        x: Int,
+        foot: Int,
+    ) {
+        for (y in foot - 3..foot) {
+            this[x, y] = if (y == foot) CLAW else FUR
+            this[x + 1, y] = if (y == foot) CLAW else FUR
+        }
+    }
 
-    private fun bg(rgb: Int) = "\u001B[48;2;${rgb shr 16 and 255};${rgb shr 8 and 255};${rgb and 255}m"
-
-    private const val RESET = "\u001B[0m"
+    private const val BRANCH = 0xB07440
+    private const val BRANCH_SHADOW = 0x6E4528
+    private const val CLAW = 0xE2B07A
+    private const val FUR = 0x9C7A5B
+    private const val FUR_DARK = 0x6F5440
+    private const val FACE = 0xE9DCC0
+    private const val STRIPE = 0x4A2F1C // the dark stripes that run down from the eyes, and closed eyes
+    private const val EYE = 0x15131F
+    private const val NOSE = 0x2A1E16
+    private const val SMILE = 0x6E4528
+    private const val MOUTH = 0x3A1E1A
+    private const val TONGUE = 0xD98A8A
+    private const val BELLY = 0xC9A27E
+    private const val LEAF = 0x6B9A3E
+    private const val LEAF_DARK = 0x48702A
 }

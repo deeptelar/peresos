@@ -181,9 +181,18 @@ class SlothTest {
     }
 
     @Test
-    fun `every frame of an animation has the same size, so the next one draws over it`() {
+    fun `every item shows, in every phase and pose`() {
         for (roundness in listOf(0, 2, 5, 10)) for (onTop in listOf(false, true)) {
-            val frames = Portrait.frames(roundness, onTop)
+            val bare = Portrait.lines(roundness, onTop)
+            for (item in Item.entries) assertTrue(Portrait.lines(roundness, onTop, listOf(item)) != bare, "$item at $roundness, on top: $onTop")
+        }
+    }
+
+    @Test
+    fun `every frame of an animation has the same size, so the next one draws over it`() {
+        val outfits = listOf(emptyList<Item>(), Item.entries) + Item.entries.map { listOf(it) }
+        for (roundness in listOf(0, 2, 5, 10)) for (onTop in listOf(false, true)) for (outfit in outfits) {
+            val frames = Portrait.frames(roundness, onTop, outfit)
             val widths = frames.flatMap { frame -> frame.map { Regex("\u001B\\[[0-9;]*m").replace(it, "").length } }
 
             assertTrue(frames.size > 1)

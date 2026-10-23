@@ -53,6 +53,7 @@ pbpaste | peresos feed                                      # or pipe it in (xcl
 peresos                                                      # wake it: it eats the oldest item
 peresos pile                                                 # what is still on the pile
 peresos diary                                                # what it wrote about its meals
+peresos wear sunglasses coffee                               # dress it up (peresos wear lists it all)
 ```
 
 The pile is a plain text file, `~/.peresos/pile.md`, with items separated by a line with `---`.
@@ -62,6 +63,23 @@ another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
 **Nothing leaves your computer.** Your messages, your facts and its diary stay in `~/.peresos`, and
 the model runs in your local Ollama. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
 slow, but you were going to wait a day anyway.
+
+## Dress it up
+
+`peresos wear` puts things on it: `sunglasses`, a `cap`, a `barretina` (the red Catalan cap) and a
+`coffee` on the branch. One item per place, so a new hat replaces the old one, and
+`peresos wear nothing` takes it all off. They fit every phase, and stay on while it sleeps.
+
+![Four sloths: a baby in sunglasses, a young one in a barretina with a coffee, a grown one in a cap, and a round one in sunglasses and a barretina](docs/peresos-wardrobe.gif)
+
+### Add an item
+
+Every item is a short function in [`Wardrobe.kt`](src/main/kotlin/dev/deeptelar/peresos/Wardrobe.kt)
+that draws a few pixels relative to the head, the eyes or the branch, so one drawing fits every
+size. To add a scarf, a flower or a tiny laptop: add an entry to `Item`, a branch to `wear` and the
+function that draws it. `./gradlew test` checks it in every phase and pose, and
+`./gradlew installDist` then `peresos wear yours` shows it. Pull requests welcome, with a
+screenshot.
 
 ## How it is built
 

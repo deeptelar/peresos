@@ -28,6 +28,7 @@ import java.nio.file.Path as JavaPath
 private val home: String = System.getenv("PERESOS_HOME") ?: "${System.getProperty("user.home")}/.peresos"
 private val modelName: String = System.getenv("PERESOS_MODEL") ?: "gemma4:12b"
 private val aboutFile: JavaPath = JavaPath.of(home, "about.md")
+private val wearFile: JavaPath = JavaPath.of(home, "wear")
 
 /** The home folder as the person would type it. */
 private val shownHome: String = home.replaceFirst(System.getProperty("user.home"), "~")
@@ -44,6 +45,7 @@ suspend fun main(args: Array<String>) {
         "feed" -> feed(pile, args.drop(1))
         "about" -> about(args.drop(1))
         "pile" -> showPile(pile)
+        "wear" -> wear(args.drop(1), sloth(Unused, pile).lastResult(config)?.state, pile)
         "diary" -> showDiary(sloth(Unused, pile).lastResult(config)?.state, pile)
         null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = aboutFile.readTextOrEmpty()), config, pile) }
         else -> println(USAGE)
@@ -142,7 +144,7 @@ private suspend fun showPortrait(
     grew: Boolean = false,
     onTop: Boolean = false,
 ) {
-    val frames = Portrait.frames(roundness, onTop)
+    val frames = Portrait.frames(roundness, onTop, wearing())
     if (animated) {
         repeat(2) {
             frames.forEach { frame ->
@@ -178,6 +180,35 @@ private fun about(words: List<String>) {
     if (facts.isBlank()) return say("It knows nothing about you yet. Tell it: peresos about \"I work from home on Tuesdays\"")
     say("What Peresós knows about you, and uses when it prepares things ($shownHome/about.md):")
     facts.lines().filter { it.isNotBlank() }.forEach { println("    $it") }
+}
+
+/** What it has on, one item per line of the wear file. */
+private fun wearing(): List<Item> = wearFile.readTextOrEmpty().lines().mapNotNull { line -> Item.entries.find { it.name.equals(line.trim(), ignoreCase = true) } }
+
+private suspend fun wear(
+    words: List<String>,
+    sloth: Sloth?,
+    pile: Pile,
+) {
+    val names = words.map { it.lowercase() }
+    if (names == listOf("nothing")) {
+        wearFile.parent.createDirectories()
+        wearFile.writeText("")
+    } else if (names.isNotEmpty()) {
+        val asked = names.map { name -> Item.entries.find { it.name.lowercase() == name } ?: return say("Peresós has no $name. It can wear: ${Item.entries.joinToString { it.name.lowercase() }}.") }
+        // One item in each slot: what it puts on last replaces what it had there.
+        val outfit = (wearing() + asked).associateBy { it.slot }.values.sortedBy { it.ordinal }
+        wearFile.parent.createDirectories()
+        wearFile.writeText(outfit.joinToString("") { it.name.lowercase() + "\n" })
+    } else {
+        say("What Peresós can wear (peresos wear sunglasses cap, or peresos wear nothing):")
+        Item.entries.forEach { println("    %-11s %s".format(it.name.lowercase(), it.description)) }
+        println()
+    }
+    val on = wearing()
+    say(if (on.isEmpty()) "It wears nothing but its fur." else "It wears: ${on.joinToString { it.name.lowercase() }}.")
+    println()
+    showPortrait(sloth?.roundness ?: 0, onTop = sloth != null && isFull(sloth, pile))
 }
 
 private fun JavaPath.readTextOrEmpty(): String = if (exists()) readText() else ""
@@ -218,6 +249,7 @@ private val USAGE =
       peresos                 wake it: it eats the oldest item and shows you the finished version
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary
+      peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
 
     It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer.
     """.trimIndent()
