@@ -155,7 +155,7 @@ class SlothTest {
         runTest {
             val model = ScriptedChatModel { answers(reply) }
 
-            sloth(model, MemoryPile("The landlord needs a morning for the boiler check"), about = "- I work from home on Tuesdays")
+            sloth(model, MemoryPile("The landlord needs a morning for the boiler check"), about = { "- I work from home on Tuesdays" })
                 .invoke(Sloth("2026-10-23"), config())
 
             assertTrue("I work from home on Tuesdays" in model.requests.single().messages.last().text)

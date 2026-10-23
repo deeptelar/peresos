@@ -25,7 +25,7 @@ interface Pile {
  * A pile in a plain text file that the person may edit by hand: items are separated by a line with
  * `---`. What the person took goes into [done], one Markdown file per item.
  */
-class FilePile(private val file: Path, private val done: Path) : Pile {
+class FilePile(val file: Path, val done: Path) : Pile {
     override fun items(): List<String> =
         if (file.exists()) file.readText().split(BETWEEN).map { it.trim() }.filter { it.isNotEmpty() } else emptyList()
 

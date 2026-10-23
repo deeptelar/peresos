@@ -1,72 +1,45 @@
 package dev.deeptelar.peresos
 
+import dev.deeptelar.peresos.Home.Companion.model
+import dev.deeptelar.peresos.Home.Companion.modelName
 import dev.deeptelar.telar.CompiledGraph
-import dev.deeptelar.telar.GraphConfig
 import dev.deeptelar.telar.GraphResult
 import dev.deeptelar.telar.agent.ChatModel
 import dev.deeptelar.telar.agent.ChatRequest
 import dev.deeptelar.telar.agent.ChatResponse
-import dev.deeptelar.telar.checkpoint.file.FileCheckpointer
-import dev.deeptelar.telar.openai.OpenAiChatModel
-import dev.deeptelar.telar.serialization.KotlinxStateSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
-import kotlinx.io.files.Path
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import java.time.LocalDate
-import kotlin.io.path.createDirectories
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
-import java.nio.file.Path as JavaPath
 
-private val home: String = System.getenv("PERESOS_HOME") ?: "${System.getProperty("user.home")}/.peresos"
-private val modelName: String = System.getenv("PERESOS_MODEL") ?: "gemma4:12b"
-private val aboutFile: JavaPath = JavaPath.of(home, "about.md")
-private val wearFile: JavaPath = JavaPath.of(home, "wear")
-
-/** The home folder as the person would type it. */
-private val shownHome: String = home.replaceFirst(System.getProperty("user.home"), "~")
+private val home = Home.default
 
 suspend fun main(args: Array<String>) {
-    val pile = FilePile(JavaPath.of(home, "pile.md"), JavaPath.of(home, "done"))
-    val config =
-        GraphConfig(
-            threadId = "peresos",
-            checkpointer = FileCheckpointer(Path(home, "checkpoints"), KotlinxStateSerializer<Sloth>()),
-            interruptBefore = setOf(SWALLOW),
-        )
+    val pile = home.pile
     when (args.firstOrNull()) {
         "feed" -> feed(pile, args.drop(1))
         "about" -> about(args.drop(1))
         "pile" -> showPile(pile)
-        "wear" -> wear(args.drop(1), sloth(Unused, pile).lastResult(config)?.state, pile)
-        "diary" -> showDiary(sloth(Unused, pile).lastResult(config)?.state, pile)
-        null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = aboutFile.readTextOrEmpty()), config, pile) }
+        "wear" -> wear(args.drop(1), sloth(Unused, pile).lastResult(home.config)?.state)
+        "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
+        "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
+        "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+        null, "--hungry" -> {
+            val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Answer it there.")
+            awake.use { HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about)) } }
+        }
         else -> println(USAGE)
     }
 }
 
 /** For the commands that only read the checkpoint and never call a model. */
-private object Unused : ChatModel {
+internal object Unused : ChatModel {
     override suspend fun chat(request: ChatRequest): ChatResponse = error("This command does not call a model.")
 }
 
-private fun model(client: HttpClient, think: Boolean = true) =
-    OpenAiChatModel.ollama(
-        client,
-        model = modelName,
-        // Gemma 4 thinks before it answers. Worth it for the finished version, not for a line of the diary.
-        parameters = if (think) JsonObject(emptyMap()) else buildJsonObject { put("reasoning_effort", "none") },
-        timeout = 15.minutes,
-    )
-
-private suspend fun wake(graph: CompiledGraph<Sloth>, config: GraphConfig<Sloth>, pile: Pile) {
+private suspend fun wake(graph: CompiledGraph<Sloth>) {
+    val config = home.config
     val today = LocalDate.now().toString()
     var result =
         when (val last = graph.lastResult(config)) {
@@ -81,7 +54,7 @@ private suspend fun wake(graph: CompiledGraph<Sloth>, config: GraphConfig<Sloth>
         if (answer == Answer.AGAIN) say("Peresós chews it again. Slowly.")
         result = graph.resume(config) { it.copy(answer = answer) }
     }
-    report(result.state, pile)
+    report(result.state)
 }
 
 private suspend fun <T> chewing(run: suspend () -> T): T {
@@ -106,7 +79,7 @@ private fun askFor(sloth: Sloth): Answer? {
     }
 }
 
-private suspend fun report(sloth: Sloth, pile: Pile) {
+private suspend fun report(sloth: Sloth) {
     println()
     if (sloth.sleptDays > 1) say("It slept ${sloth.sleptDays} days. It feels wonderful.")
     when (sloth.rest) {
@@ -116,7 +89,7 @@ private suspend fun report(sloth: Sloth, pile: Pile) {
         Rest.NONE -> {
             val meal = sloth.meals.last()
             when (meal.answer) {
-                Answer.YES -> say("Swallowed. The finished version is in $shownHome/done.")
+                Answer.YES -> say("Swallowed. The finished version is in ${home.shown}/done.")
                 Answer.NO -> say("Spat out. One thing fewer to think about.")
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
@@ -127,11 +100,8 @@ private suspend fun report(sloth: Sloth, pile: Pile) {
     }
     println()
     val grew = sloth.rest == Rest.NONE && Portrait.phase(sloth.roundness) != Portrait.phase(sloth.roundness - 1)
-    showPortrait(sloth.roundness, grew, onTop = isFull(sloth, pile))
+    showPortrait(sloth.roundness, grew, onTop = home.isFull(sloth))
 }
-
-/** It ate the whole pile, so it sleeps on top of its branch until there is something new. */
-private fun isFull(sloth: Sloth, pile: Pile): Boolean = sloth.roundness > 0 && pile.items().isEmpty()
 
 /** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
 private val animated: Boolean =
@@ -144,7 +114,7 @@ private suspend fun showPortrait(
     grew: Boolean = false,
     onTop: Boolean = false,
 ) {
-    val frames = Portrait.frames(roundness, onTop, wearing())
+    val frames = Portrait.frames(roundness, onTop, home.wearing())
     if (animated) {
         repeat(2) {
             frames.forEach { frame ->
@@ -156,10 +126,7 @@ private suspend fun showPortrait(
     }
     frames.first().forEach { println("  $it") }
     println()
-    val finished = "$roundness ${if (roundness == 1) "item" else "items"} finished"
-    val phase = Portrait.phase(roundness)
-    val doing = if (onTop) "asleep on top of its branch, full" else phase.doing
-    say("${if (grew) "It grew! Peresós is now" else "Peresós is"} ${phase.title}, $doing ($finished).")
+    say(Portrait.caption(roundness, grew, onTop))
 }
 
 private fun feed(pile: Pile, words: List<String>) {
@@ -171,47 +138,33 @@ private fun feed(pile: Pile, words: List<String>) {
 }
 
 private fun about(words: List<String>) {
-    val fact = words.joinToString(" ").trim()
-    if (fact.isNotEmpty()) {
-        aboutFile.parent.createDirectories()
-        aboutFile.writeText(aboutFile.readTextOrEmpty() + "- $fact\n")
-    }
-    val facts = aboutFile.readTextOrEmpty()
+    home.learn(words.joinToString(" "))
+    val facts = home.about()
     if (facts.isBlank()) return say("It knows nothing about you yet. Tell it: peresos about \"I work from home on Tuesdays\"")
-    say("What Peresós knows about you, and uses when it prepares things ($shownHome/about.md):")
+    say("What Peresós knows about you, and uses when it prepares things (${home.shown}/about.md):")
     facts.lines().filter { it.isNotBlank() }.forEach { println("    $it") }
 }
-
-/** What it has on, one item per line of the wear file. */
-private fun wearing(): List<Item> = wearFile.readTextOrEmpty().lines().mapNotNull { line -> Item.entries.find { it.name.equals(line.trim(), ignoreCase = true) } }
 
 private suspend fun wear(
     words: List<String>,
     sloth: Sloth?,
-    pile: Pile,
 ) {
     val names = words.map { it.lowercase() }
     if (names == listOf("nothing")) {
-        wearFile.parent.createDirectories()
-        wearFile.writeText("")
+        home.dress(emptyList())
     } else if (names.isNotEmpty()) {
         val asked = names.map { name -> Item.entries.find { it.name.lowercase() == name } ?: return say("Peresós has no $name. It can wear: ${Item.entries.joinToString { it.name.lowercase() }}.") }
-        // One item in each slot: what it puts on last replaces what it had there.
-        val outfit = (wearing() + asked).associateBy { it.slot }.values.sortedBy { it.ordinal }
-        wearFile.parent.createDirectories()
-        wearFile.writeText(outfit.joinToString("") { it.name.lowercase() + "\n" })
+        home.putOn(asked)
     } else {
         say("What Peresós can wear (peresos wear sunglasses cap, or peresos wear nothing):")
         Item.entries.forEach { println("    %-11s %s".format(it.name.lowercase(), it.description)) }
         println()
     }
-    val on = wearing()
+    val on = home.wearing()
     say(if (on.isEmpty()) "It wears nothing but its fur." else "It wears: ${on.joinToString { it.name.lowercase() }}.")
     println()
-    showPortrait(sloth?.roundness ?: 0, onTop = sloth != null && isFull(sloth, pile))
+    showPortrait(sloth?.roundness ?: 0, onTop = home.isFull(sloth))
 }
-
-private fun JavaPath.readTextOrEmpty(): String = if (exists()) readText() else ""
 
 private fun showPile(pile: Pile) {
     val items = pile.items()
@@ -219,11 +172,31 @@ private fun showPile(pile: Pile) {
     items.forEachIndexed { index, item -> println("  ${index + 1}. ${item.lines().first().take(70)}") }
 }
 
-private suspend fun showDiary(sloth: Sloth?, pile: Pile) {
+private suspend fun showDiary(sloth: Sloth?) {
     if (sloth == null || sloth.diary.isEmpty()) return say("The diary is empty. Peresós has not eaten anything yet.")
     sloth.diary.forEach { entry -> wrap(entry.text, 70).forEachIndexed { index, line -> println("  ${if (index == 0) entry.day else " ".repeat(10)}  $line") } }
     println()
-    showPortrait(sloth.roundness, onTop = isFull(sloth, pile))
+    showPortrait(sloth.roundness, onTop = home.isFull(sloth))
+}
+
+/** The value of `--name=value` in [args], for trying another season or weather in the window. */
+private fun <T : Enum<T>> option(
+    args: Array<String>,
+    name: String,
+    values: List<T>,
+): T? = args.firstNotNullOfOrNull { it.removePrefix("--$name=").takeIf { value -> value != it } }?.let { value -> values.find { it.name.equals(value, ignoreCase = true) } }
+
+private suspend fun place(
+    meteo: OpenMeteo,
+    words: List<String>,
+) {
+    val name = words.joinToString(" ").trim()
+    when {
+        name == "nothing" -> home.settle(null)
+        name.isNotEmpty() -> home.settle(meteo.find(name) ?: return say("Open-Meteo knows no town called $name."))
+    }
+    val place = home.place() ?: return say("The window shows the season only. For the weather too: peresos place \"your town\"")
+    say("The window shows the weather in ${place.name}, from Open-Meteo. Only the town is sent, never the pile.")
 }
 
 private fun say(text: String) = println("  $text")
@@ -250,6 +223,9 @@ private val USAGE =
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
+      peresos window          open its home in a window, where you can do all of this with buttons
+      peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
 
-    It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer.
+    It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer,
+    except the town you give peresos place.
     """.trimIndent()

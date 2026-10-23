@@ -1,6 +1,6 @@
 # Peresós
 
-A sloth that lives in your terminal and eats one item of your backlog a day. You only say yes or no.
+A sloth that lives in your terminal, or in a pixel-art window on your desktop, and eats one item of your backlog a day. You only say yes or no.
 
 ![A session: tell it one fact, feed it three items, wake it, take the finished reply](docs/peresos-demo.gif)
 
@@ -54,6 +54,8 @@ peresos                                                      # wake it: it eats 
 peresos pile                                                 # what is still on the pile
 peresos diary                                                # what it wrote about its meals
 peresos wear sunglasses coffee                               # dress it up (peresos wear lists it all)
+peresos window                                               # its home on your desktop
+peresos place "Girona"                                       # optional: that town's weather in the window
 ```
 
 The pile is a plain text file, `~/.peresos/pile.md`, with items separated by a line with `---`.
@@ -61,8 +63,28 @@ Edit it by hand whenever you like. `PERESOS_MODEL` picks another Ollama model an
 another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
 
 **Nothing leaves your computer.** Your messages, your facts and its diary stay in `~/.peresos`, and
-the model runs in your local Ollama. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
+the model runs in your local Ollama. The one exception is opt-in: if you give the window a town for
+its weather, that town goes to [Open-Meteo](https://open-meteo.com), and nothing else. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
 slow, but you were going to wait a day anyway.
+
+## A home on your desktop
+
+`peresos window` opens the sloth's habitat: a pixel-art jungle where it hangs from its branch and
+plays its animations, next to a board with everything the terminal does, as buttons. Wake it, read
+what Gemma prepared, and take it, bin it, leave it for later or ask for another try; feed the pile,
+read the diary, dress it up.
+
+![The window: putting a barretina on, waking it, Gemma's reply to the dentist, Take it, and the diary line](docs/peresos-window.gif)
+
+The window and the terminal share `~/.peresos`, so they show the same sloth: feed it in the
+terminal and the window shows the new item a moment later. Only one of them can wake it at a time.
+
+The leaves follow the season, and the sky follows the weather, by day and by night: sun, clouds,
+fog, rain, snow on the branch, or a storm with lightning. Without a town it shows the season only;
+`peresos place "your town"` (or the **You** tab) adds the weather. To try them all:
+`peresos window --season=winter --weather=snow`.
+
+![The habitat in six weathers: clear, cloudy, fog, rain, snow and storm, across the seasons](docs/peresos-weather.png)
 
 ## Dress it up
 
@@ -114,14 +136,24 @@ flowchart LR
 - **The portrait is drawn, not stored**: [`Portrait`](src/main/kotlin/dev/deeptelar/peresos/Portrait.kt)
   draws the sloth from ovals sized for its phase, two pixels per character in 24-bit color, and
   plays its animation only when the output is a terminal.
+- **The window draws a snapshot**: [`SlothModel`](src/main/kotlin/dev/deeptelar/peresos/SlothModel.kt)
+  runs the same graph in a Telar `GraphSession`, whose `StateFlow` of snapshots the Compose window
+  draws: running, waiting for your answer, done or stopped. Its controls are a small pixel-art kit
+  in [`PixelUi.kt`](src/main/kotlin/dev/deeptelar/peresos/PixelUi.kt), and the habitat is drawn
+  pixel by pixel in [`Habitat.kt`](src/main/kotlin/dev/deeptelar/peresos/Habitat.kt).
 - **Tested without a model**: [`SlothTest`](src/test/kotlin/dev/deeptelar/peresos/SlothTest.kt) runs
-  the whole graph with a scripted model, `./gradlew test`.
+  the whole graph with a scripted model, and [`WindowTest`](src/test/kotlin/dev/deeptelar/peresos/WindowTest.kt)
+  clicks through the window and draws it in every weather, `./gradlew test`.
 
 ## Credits
 
 - [Gemma 4](https://ai.google.dev/gemma) by Google, the open-weight model that does the work.
 - [Ollama](https://ollama.com), which runs it locally.
 - [Telar](https://github.com/deeptelar/telar), the workflow library underneath.
+- [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/), which draws the window.
+- [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans), the pixel font of the window, under the
+  SIL Open Font License.
+- [Open-Meteo](https://open-meteo.com), the weather, free and without a key.
 
 Built for the [DEV Hacktoberfest Open-Source AI Challenge, week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19).
 

@@ -90,6 +90,14 @@ internal class Canvas(
         }
     }
 
+    /** The pixels for a window to paint, with the top of the branch at row [branch] of the drawing. */
+    fun picture(branch: Int): Picture =
+        Picture(
+            pixels = pixels.map { it.copyOf() },
+            letters = texts.mapKeys { (at, _) -> at.first to at.second * 2 + top },
+            branch = branch + top,
+        )
+
     /** The lines to print: two pixels in each character, with the colors of a 24-bit terminal. */
     fun render(): List<String> =
         (-top until height step 2).map { y ->
@@ -117,4 +125,19 @@ internal class Canvas(
     private companion object {
         const val RESET = "\u001B[0m"
     }
+}
+
+/**
+ * A drawing as plain pixels, for a window: rows of 24-bit colors, [EMPTY] where nothing is.
+ *
+ * @property letters letters two pixels tall, like the z's of its sleep, by the column and the row of their top.
+ * @property branch the row of the top of the branch.
+ */
+internal class Picture(
+    val pixels: List<IntArray>,
+    val letters: Map<Pair<Int, Int>, Char>,
+    val branch: Int,
+) {
+    val width: Int get() = pixels.first().size
+    val height: Int get() = pixels.size
 }

@@ -97,14 +97,15 @@ private const val VOICE =
  * @param model prepares the finished version of an item. It may think as long as it likes.
  * @param diarist writes the diary line, a small job: a model that does not think is enough.
  * @param hungry eat even if it already ate today, for a demo.
- * @param about what the person told it about themselves, such as which days they work from home.
+ * @param about reads what the person told it about themselves, such as which days they work from home,
+ * each time it chews: the window lets them add facts while it runs.
  */
 fun sloth(
     model: ChatModel,
     pile: Pile,
     hungry: Boolean = false,
     diarist: ChatModel = model,
-    about: String = "",
+    about: () -> String = { "" },
 ): CompiledGraph<Sloth> =
     StateGraph<Sloth> {
         val wake =
@@ -131,7 +132,7 @@ fun sloth(
         val chew =
             node(
                 "chew",
-                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about), system = CHEF) },
+                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about()), system = CHEF) },
                 retry = Retry(attempts = 2),
             ) { sloth, bite -> sloth.copy(bite = bite) }
 

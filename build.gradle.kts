@@ -1,6 +1,8 @@
 plugins {
     kotlin("jvm") version "2.4.21"
     kotlin("plugin.serialization") version "2.4.21"
+    kotlin("plugin.compose") version "2.4.21"
+    id("org.jetbrains.compose") version "1.12.2"
     application
 }
 
@@ -13,6 +15,10 @@ dependencies {
     implementation("dev.deeptelar:telar-serialization:$telar")
     implementation("dev.deeptelar:telar-checkpoint-file:$telar")
     implementation("io.ktor:ktor-client-cio:3.6.0")
+    // The window, `peresos window`: Compose for the desktop this is built on.
+    implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     // Ktor logs through SLF4J; without a logger it prints a warning on every start.
     runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
 

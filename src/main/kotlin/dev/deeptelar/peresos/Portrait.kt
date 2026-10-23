@@ -43,12 +43,38 @@ object Portrait {
         roundness: Int,
         onTop: Boolean = false,
         wearing: Collection<Item> = emptyList(),
-    ): List<List<String>> {
+    ): List<List<String>> = drawings(roundness, onTop, wearing).map { (canvas, _) -> canvas.render() }
+
+    /** The same frames as [frames], as pixels for a window. */
+    internal fun pictures(
+        roundness: Int,
+        onTop: Boolean = false,
+        wearing: Collection<Item> = emptyList(),
+    ): List<Picture> = drawings(roundness, onTop, wearing).map { (canvas, branch) -> canvas.picture(branch) }
+
+    /** What the sloth is and does, to write under its portrait. */
+    fun caption(
+        roundness: Int,
+        grew: Boolean = false,
+        onTop: Boolean = false,
+    ): String {
+        val finished = "$roundness ${if (roundness == 1) "item" else "items"} finished"
+        val phase = phase(roundness)
+        val doing = if (onTop) "asleep on top of its branch, full" else phase.doing
+        return "${if (grew) "It grew! Peresós is now" else "Peresós is"} ${phase.title}, $doing ($finished)."
+    }
+
+    /** Each frame, with the row of the top of its branch. */
+    private fun drawings(
+        roundness: Int,
+        onTop: Boolean,
+        wearing: Collection<Item>,
+    ): List<Pair<Canvas, Int>> {
         val build = builds.getValue(phase(roundness))
         val room = wearing.maxOfOrNull { it.room } ?: 0
         val items = wearing.sortedBy { it.ordinal }
-        if (onTop) return asleep.mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room).render() }
-        return poses.getValue(phase(roundness)).mapIndexed { tick, pose -> draw(build, pose, tick, items, room).render() }
+        if (onTop) return asleep.mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room) to build.height - 5 }
+        return poses.getValue(phase(roundness)).mapIndexed { tick, pose -> draw(build, pose, tick, items, room) to 0 }
     }
 
     /** The size of the picture, and of the head and the body in it, in pixels. Both ovals are around the middle column. */
@@ -133,7 +159,7 @@ object Portrait {
         room: Int,
     ): Canvas {
         val canvas = Canvas(build.width, build.height, right = room)
-        val branch = build.height - 5
+        val branch = build.height - 5 // also in drawings
         val hx = build.width - ceil(build.head.rx).toInt() // the head at the right end, the face on columns hx - 1 and hx
         val head = Oval(branch - build.head.ry + 1, build.head.rx, build.head.ry)
         val length = build.body.ry * 1.3
@@ -248,8 +274,10 @@ object Portrait {
         }
     }
 
-    private const val BRANCH = 0xB07440
-    private const val BRANCH_SHADOW = 0x6E4528
+    internal const val BRANCH = 0xB07440
+    internal const val BRANCH_SHADOW = 0x6E4528
+    internal const val LEAF = 0x6B9A3E
+    internal const val LEAF_DARK = 0x48702A
     private const val CLAW = 0xE2B07A
     private const val FUR = 0x9C7A5B
     private const val FUR_DARK = 0x6F5440
@@ -261,6 +289,4 @@ object Portrait {
     private const val MOUTH = 0x3A1E1A
     private const val TONGUE = 0xD98A8A
     private const val BELLY = 0xC9A27E
-    private const val LEAF = 0x6B9A3E
-    private const val LEAF_DARK = 0x48702A
 }
