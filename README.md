@@ -55,7 +55,7 @@ Edit it by hand whenever you like. `PERESOS_MODEL` picks another Ollama model an
 another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
 
 **Nothing leaves your computer.** Your messages, your facts and its diary stay in `~/.peresos`, and
-the model runs in your local Ollama. With thinking on, a meal takes 10 to 60 seconds on a laptop GPU:
+the model runs in your local Ollama. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
 slow, but you were going to wait a day anyway.
 
 ## How it is built
