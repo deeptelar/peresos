@@ -1,0 +1,102 @@
+# Peresós
+
+A sloth that lives in your terminal and eats one item of your backlog a day. You only say yes or no.
+
+![A session: tell it one fact, feed it three items, wake it, take the finished reply](docs/peresos-demo.gif)
+
+*Peresós* is Catalan for sloth, and for lazy.
+
+## What it does
+
+You feed it the things you keep putting off: the message you haven't answered, the decision you
+keep postponing, the note you never sorted. Once a day you wake it. It takes the oldest item and
+**Gemma 4, running on your own machine**, prepares the finished version:
+
+- a **reply**, written as you, in the language of the message,
+- a **decision**, with one or two sentences on why,
+- a **note**, cleaned up,
+- or for a **task**, the first step, which takes five minutes at most.
+
+Then it waits for you:
+
+- **`y`**: take it. The finished version is saved in `~/.peresos/done`, and the item leaves the pile.
+- **`n`**: bin it. Deciding not to do something also finishes it.
+- **`l`**: later. It goes back to the bottom of the pile.
+- **`a`**: another try. Gemma makes a different version and knows which ones you didn't want.
+- **Enter**: decide another day. It keeps the item in its mouth. Close the terminal, come back
+  tomorrow, and it asks again without calling the model a second time.
+
+It eats one item a day at most. Skip a few days and it simply sleeps, then tells you how long. It
+never nags. It writes a line in its diary after every meal, and grows rounder as the pile shrinks.
+
+## Run it
+
+You need [Ollama](https://ollama.com) with Gemma 4, and a JDK 17 or newer:
+
+```bash
+ollama pull gemma4:12b
+git clone https://github.com/deeptelar/peresos.git
+cd peresos
+./gradlew installDist
+alias peresos="$PWD/build/install/peresos/bin/peresos"
+```
+
+```bash
+peresos about "I work from home on Tuesdays and Thursdays"   # once: facts it uses when it prepares things
+peresos feed "the message, decision or note you keep avoiding"
+pbpaste | peresos feed                                      # or pipe it in (xclip -o on Linux)
+peresos                                                      # wake it: it eats the oldest item
+peresos pile                                                 # what is still on the pile
+peresos diary                                                # what it wrote about its meals
+```
+
+The pile is a plain text file, `~/.peresos/pile.md`, with items separated by a line with `---`.
+Edit it by hand whenever you like. `PERESOS_MODEL` picks another Ollama model and `PERESOS_HOME`
+another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
+
+**Nothing leaves your computer.** Your messages, your facts and its diary stay in `~/.peresos`, and
+the model runs in your local Ollama. With thinking on, a meal takes 10 to 60 seconds on a laptop GPU:
+slow, but you were going to wait a day anyway.
+
+## How it is built
+
+Peresós is a workflow of [Telar](https://github.com/deeptelar/telar), an open-source Kotlin library
+for AI agents and workflows as small typed graphs. Telar is my own library; this app is new, and
+uses it from Maven Central like any other.
+
+```mermaid
+flowchart LR
+    S((start)) --> wake
+    wake -->|hungry and the pile has something| chew
+    wake -->|already ate today, or nothing to eat| E((end))
+    chew -->|"waits for your answer"| swallow
+    swallow -->|another try| chew
+    swallow --> diary --> E
+```
+
+- **The sloth is one `@Serializable` data class**, [`Sloth`](src/main/kotlin/dev/deeptelar/peresos/Sloth.kt):
+  when it last ate, what it is chewing, its meals and its diary.
+- **Every step is saved** in a checkpoint file, so its memory from one day to the next is the
+  checkpoint of the last run.
+- **It waits for you** with an interrupt before `swallow`. The run stops, the process ends, and the
+  next `peresos` resumes it from the checkpoint with your answer.
+- **Gemma answers with a typed value**: `chew` asks for a `Bite` (kind, title, finished text) with
+  `ask<Bite>`, which gives the model the JSON schema of the class and asks again when an answer
+  does not fit.
+- **The pile changes exactly once**: `swallow` edits the pile and writes the file inside an
+  `effect`, which Telar saves with the step, so a crash halfway never eats an item twice.
+- **Thinking where it helps**: `chew` lets Gemma think; the diary line uses the same model with
+  `reasoning_effort: "none"`. In my test, a three-word answer took 37 seconds with thinking and 4
+  without.
+- **Tested without a model**: [`SlothTest`](src/test/kotlin/dev/deeptelar/peresos/SlothTest.kt) runs
+  the whole graph with a scripted model, `./gradlew test`.
+
+## Credits
+
+- [Gemma 4](https://ai.google.dev/gemma) by Google, the open-weight model that does the work.
+- [Ollama](https://ollama.com), which runs it locally.
+- [Telar](https://github.com/deeptelar/telar), the workflow library underneath.
+
+Built for the [DEV Hacktoberfest Open-Source AI Challenge, week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19).
+
+Apache License 2.0.
