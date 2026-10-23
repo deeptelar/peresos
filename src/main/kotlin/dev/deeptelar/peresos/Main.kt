@@ -16,11 +16,19 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.LocalDate
+import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.minutes
 import java.nio.file.Path as JavaPath
 
 private val home: String = System.getenv("PERESOS_HOME") ?: "${System.getProperty("user.home")}/.peresos"
 private val modelName: String = System.getenv("PERESOS_MODEL") ?: "gemma4:12b"
+private val aboutFile: JavaPath = JavaPath.of(home, "about.md")
+
+/** The home folder as the person would type it. */
+private val shownHome: String = home.replaceFirst(System.getProperty("user.home"), "~")
 
 suspend fun main(args: Array<String>) {
     val pile = FilePile(JavaPath.of(home, "pile.md"), JavaPath.of(home, "done"))
@@ -32,9 +40,10 @@ suspend fun main(args: Array<String>) {
         )
     when (args.firstOrNull()) {
         "feed" -> feed(pile, args.drop(1))
+        "about" -> about(args.drop(1))
         "pile" -> showPile(pile)
         "diary" -> showDiary(sloth(Unused, pile).lastResult(config)?.state)
-        null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false)), config) }
+        null, "--hungry" -> HttpClient(CIO).use { client -> wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = aboutFile.readTextOrEmpty()), config) }
         else -> println(USAGE)
     }
 }
@@ -104,7 +113,7 @@ private fun report(sloth: Sloth) {
         Rest.NONE -> {
             val meal = sloth.meals.last()
             when (meal.answer) {
-                Answer.YES -> say("Swallowed. The finished version is in $home/done.")
+                Answer.YES -> say("Swallowed. The finished version is in $shownHome/done.")
                 Answer.NO -> say("Spat out. One thing fewer to think about.")
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
@@ -121,6 +130,20 @@ private fun feed(pile: Pile, words: List<String>) {
     val size = pile.items().size
     say("Peresós looks at the pile: $size ${if (size == 1) "item" else "items"}. It will get to it. Eventually.")
 }
+
+private fun about(words: List<String>) {
+    val fact = words.joinToString(" ").trim()
+    if (fact.isNotEmpty()) {
+        aboutFile.parent.createDirectories()
+        aboutFile.writeText(aboutFile.readTextOrEmpty() + "- $fact\n")
+    }
+    val facts = aboutFile.readTextOrEmpty()
+    if (facts.isBlank()) return say("It knows nothing about you yet. Tell it: peresos about \"I work from home on Tuesdays\"")
+    say("What Peresós knows about you, and uses when it prepares things ($shownHome/about.md):")
+    facts.lines().filter { it.isNotBlank() }.forEach { println("    $it") }
+}
+
+private fun JavaPath.readTextOrEmpty(): String = if (exists()) readText() else ""
 
 private fun showPile(pile: Pile) {
     val items = pile.items()
@@ -154,6 +177,7 @@ private val USAGE =
     Peresós eats one item of your backlog a day, and you only say yes or no.
 
       peresos feed "text"     put something you avoid on the pile (or pipe text into it)
+      peresos about "fact"    tell it something about you that helps, like when you are home
       peresos                 wake it: it eats the oldest item and shows you the finished version
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary

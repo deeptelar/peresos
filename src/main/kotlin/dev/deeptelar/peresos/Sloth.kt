@@ -95,8 +95,15 @@ private const val VOICE =
  * @param model prepares the finished version of an item. It may think as long as it likes.
  * @param diarist writes the diary line, a small job: a model that does not think is enough.
  * @param hungry eat even if it already ate today, for a demo.
+ * @param about what the person told it about themselves, such as which days they work from home.
  */
-fun sloth(model: ChatModel, pile: Pile, hungry: Boolean = false, diarist: ChatModel = model): CompiledGraph<Sloth> =
+fun sloth(
+    model: ChatModel,
+    pile: Pile,
+    hungry: Boolean = false,
+    diarist: ChatModel = model,
+    about: String = "",
+): CompiledGraph<Sloth> =
     StateGraph<Sloth> {
         val wake =
             node("wake") { sloth ->
@@ -121,7 +128,7 @@ fun sloth(model: ChatModel, pile: Pile, hungry: Boolean = false, diarist: ChatMo
         val chew =
             node(
                 "chew",
-                work = { sloth -> model.ask<Bite>(chewPrompt(sloth), system = CHEF) },
+                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about), system = CHEF) },
                 retry = Retry(attempts = 2),
             ) { sloth, bite -> sloth.copy(bite = bite) }
 
@@ -160,14 +167,15 @@ fun sloth(model: ChatModel, pile: Pile, hungry: Boolean = false, diarist: ChatMo
         diary then NodeRef.END
     }.compile()
 
-private fun chewPrompt(sloth: Sloth): String {
+private fun chewPrompt(sloth: Sloth, about: String): String {
     val tried =
         if (sloth.tries.isEmpty()) {
             ""
         } else {
             "\n\nI did not want these versions, so make a different one:\n" + sloth.tries.joinToString("\n") { "- ${it.replace("\n", " ")}" }
         }
-    return "Here is an item of my backlog. Make it done for me.\n\n${sloth.item}$tried"
+    val me = if (about.isBlank()) "" else "What you know about me:\n${about.trim()}\n\n"
+    return "${me}Here is an item of my backlog. Make it done for me.\n\n${sloth.item}$tried"
 }
 
 private fun diaryPrompt(sloth: Sloth): String {
