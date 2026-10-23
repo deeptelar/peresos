@@ -68,8 +68,12 @@ internal class SlothModel(
     var weather: Weather by mutableStateOf(weather ?: Weather.CLEAR)
         private set
 
+    /** The day, as `2026-10-23`. It turns at midnight also while the window stays open, so the window can wake it again. */
+    var day: String by mutableStateOf(today())
+        private set
+
     /** The season, from the date and the half of the world the town is in. */
-    val season: Season get() = forcedSeason ?: season(LocalDate.parse(today()), place?.southern == true)
+    val season: Season get() = forcedSeason ?: season(LocalDate.parse(day), place?.southern == true)
 
     /** It ate in this window, since it opened: a new phase is news. */
     var ateHere: Boolean by mutableStateOf(false)
@@ -79,7 +83,8 @@ internal class SlothModel(
         scope.launch {
             session.snapshot.collect { snapshot ->
                 if (snapshot is GraphSnapshot.Stopped && snapshot.cause != null) trouble = describe(snapshot.cause!!)
-                if (snapshot is GraphSnapshot.Completed || snapshot is GraphSnapshot.Interrupted) pile = home.pile.items()
+                // Also after a stop: it may have swallowed before the diary failed.
+                if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) pile = home.pile.items()
             }
         }
         session.restore()
@@ -95,6 +100,7 @@ internal class SlothModel(
             var seen = home.version()
             while (true) {
                 delay(2.seconds)
+                day = today()
                 val now = home.version()
                 if (now != seen && session.snapshot.value !is GraphSnapshot.Running) refresh()
                 seen = now
@@ -112,10 +118,14 @@ internal class SlothModel(
             scope.launch { lookOutside() }
         }
         busy = false
-        if (session.snapshot.value !is GraphSnapshot.Running) session.restore()
+        synchronized(turn) { if (session.snapshot.value !is GraphSnapshot.Running) session.restore() }
     }
 
-    fun day(): String = today()
+    /**
+     * A click and the look every two seconds take turns: a restore that the look sends just after a
+     * click would cancel the run the click started, and the person's answer with it.
+     */
+    private val turn = Any()
 
     /** Opens the folder of the finished versions it swallowed, where the desktop can. */
     val openDone: (() -> Unit)? =
@@ -124,7 +134,7 @@ internal class SlothModel(
         }
 
     /** It already ate today, and one item a day is plenty. */
-    fun ateToday(sloth: Sloth?): Boolean = !hungry && sloth?.lastMeal == today()
+    fun ateToday(sloth: Sloth?): Boolean = !hungry && sloth?.lastMeal == day
 
     fun isFull(sloth: Sloth?): Boolean = sloth != null && sloth.roundness > 0 && pile.isEmpty()
 
@@ -186,11 +196,13 @@ internal class SlothModel(
 
     /** Runs [command] while it holds the lock of its home, so a terminal does not wake it at the same time. */
     private fun awake(command: () -> Job) {
-        val awake = home.awake()
-        busy = awake == null
-        if (awake == null) return
-        trouble = null
-        command().invokeOnCompletion { awake.close() }
+        synchronized(turn) {
+            val awake = home.awake()
+            busy = awake == null
+            if (awake == null) return
+            trouble = null
+            command().invokeOnCompletion { awake.close() }
+        }
     }
 
     private fun describe(cause: Throwable): String {

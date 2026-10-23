@@ -26,6 +26,9 @@ dependencies {
     testImplementation("dev.deeptelar:telar-test:$telar")
     testImplementation("dev.deeptelar:telar-checkpoint-file:$telar")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    // The soak test clicks the window's buttons.
+    @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+    testImplementation(compose.uiTest)
 }
 
 kotlin {
@@ -39,4 +42,18 @@ application {
 
 tasks.named<JavaExec>("run") {
     standardInput = System.`in`
+}
+
+// A long random walk through the window: ./gradlew soak -Psteps=3000 -Pseed=7, or -Pgemma for the real model.
+val soak by tasks.registering(Test::class) {
+    description = "Clicks through the window for a long time, checking every action."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("*SoakTest*") }
+    systemProperty("soak.steps", providers.gradleProperty("steps").getOrElse("3000"))
+    providers.gradleProperty("seed").orNull?.let { systemProperty("soak.seed", it) }
+    if (providers.gradleProperty("gemma").isPresent) systemProperty("soak.gemma", "true")
+    outputs.upToDateWhen { false }
+    testLogging { showStandardStreams = true }
 }

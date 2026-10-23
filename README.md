@@ -144,6 +144,11 @@ flowchart LR
 - **Tested without a model**: [`SlothTest`](src/test/kotlin/dev/deeptelar/peresos/SlothTest.kt) runs
   the whole graph with a scripted model, and [`WindowTest`](src/test/kotlin/dev/deeptelar/peresos/WindowTest.kt)
   clicks through the window and draws it in every weather, `./gradlew test`.
+- **A long walk**: [`SoakTest`](src/test/kotlin/dev/deeptelar/peresos/SoakTest.kt) clicks the
+  window's buttons in random order for months of simulated days, while a terminal feeds, wakes and
+  holds the lock, the pile is edited by hand and Ollama stops halfway, and checks the pile, the
+  checkpoint, the lock and the screen after every action. `./gradlew soak -Psteps=5000` runs it
+  long, `-Pseed=7` repeats a walk, and `-Pgemma` uses the real model.
 
 ## Credits
 

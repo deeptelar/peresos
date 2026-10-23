@@ -193,8 +193,9 @@ private fun ColumnScope.Bite(
 ) {
     PixelText("It chewed this one  ·  ${bite.kind.name.lowercase()}", size = SMALL, color = Ink.faint)
     Title(bite.title)
-    Box(Modifier.fillMaxWidth().pixelBox(Ink.field, raised = false)) {
-        SelectionContainer { PixelText(bite.finished.trim(), Modifier.fillMaxWidth().padding(14.dp), size = BODY) }
+    // A long version scrolls in its own box, so the buttons under it stay in sight.
+    Box(Modifier.fillMaxWidth().heightIn(max = 230.dp).pixelBox(Ink.field, raised = false)) {
+        SelectionContainer { PixelText(bite.finished.trim(), Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp), size = BODY) }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         PixelButton("Take it", Ink.green, { model.answer(Answer.YES) })
@@ -212,7 +213,7 @@ private fun ColumnScope.Rested(
     model: SlothModel,
     sloth: Sloth?,
 ) {
-    val woke = sloth != null && sloth.lastWake == model.day()
+    val woke = sloth != null && sloth.lastWake == model.day
     if (woke && sloth.sleptDays > 1) Line("It slept ${sloth.sleptDays} days. It feels wonderful.")
     if (woke && sloth.rest == Rest.NONE) {
         val meal = sloth.meals.last()
