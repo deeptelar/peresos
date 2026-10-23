@@ -1,6 +1,18 @@
 package dev.deeptelar.peresos
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import dev.deeptelar.telar.GraphSnapshot
 import dev.deeptelar.telar.test.ScriptedChatModel
@@ -12,6 +24,7 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.EncodedImageFormat
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.imageio.ImageIO
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeBytes
 import kotlin.test.AfterTest
@@ -137,6 +150,60 @@ class WindowTest {
             assertEquals(season, model.season)
             shoot(model, "weather-${weather.name.lowercase()}-${season.name.lowercase()}", night = index % 3 == 2)
         }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `touched, it reacts to a pat, a tickle and a poke, until it is fed up`() {
+        home.pile.add("Decide on the gym membership")
+        val model = model()
+        model.settle()
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
+            val still = Portrait.pictures(0).first()
+            val stage = stage(WINDOW_SIZE.width.value * density.density, 170 * density.density, still, onTop = false)
+
+            fun touch(
+                part: Touch,
+                says: String,
+                shot: String? = null,
+            ) {
+                onRoot().performTouchInput { click(stage.where(still, part)) }
+                waitForIdle()
+                onNodeWithText(says).assertExists()
+                shot?.let { ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("$it.png").toFile()) }
+            }
+            touch(Touch.HEAD, "Mmm. Behind the ears, please.", "touch-1-pat")
+            touch(Touch.BELLY, "That tickles! Slowly, but it tickles.", "touch-2-tickle")
+            touch(Touch.FUR, "Wake me with the button. Gently.", "touch-3-poke")
+            touch(Touch.FUR, "Mmh? Five more minutes.")
+            touch(Touch.FUR, "1 on the pile. None of them on fire.")
+            touch(Touch.FUR, "Zzz. (It pretends to sleep.)", "touch-6-fed-up")
+        }
+        assertNull(stage(400f, 170f, Portrait.pictures(0).first(), onTop = false).part(Portrait.pictures(0).first(), 2f, 2f), "the sky is not the sloth")
+        // Every size of it, hanging or on top and dressed, has a head and fur to touch, and its reaction fits its place.
+        for (roundness in listOf(0, 3, 7, 12)) {
+            for (onTop in listOf(false, true)) {
+                val still = Portrait.pictures(roundness, onTop, listOf(Item.BARRETINA, Item.COFFEE)).first()
+                val parts = still.pixels.flatMap { line -> line.map(Portrait::part) }.toSet()
+                assertTrue(Touch.HEAD in parts && Touch.FUR in parts, "roundness $roundness, on top $onTop: $parts")
+                for (touch in Touch.entries) {
+                    val touched = Portrait.touched(roundness, onTop, listOf(Item.BARRETINA, Item.COFFEE), touch)
+                    assertEquals(still.width to still.height, touched.width to touched.height)
+                    assertEquals(still.branch, touched.branch)
+                }
+            }
+        }
+    }
+
+    /** Where on the screen to touch [part] of [picture]: its pixel nearest to the middle of the picture. */
+    private fun Stage.where(
+        picture: Picture,
+        part: Touch,
+    ): Offset {
+        val pixels = picture.pixels.flatMapIndexed { y, line -> line.indices.filter { Portrait.part(line[it]) == part }.map { it to y } }
+        val (x, y) = pixels.minBy { (x, y) -> (x - picture.width / 2) * (x - picture.width / 2) + (y - picture.height / 2) * (y - picture.height / 2) }
+        return Offset((left + x + 0.5f) * scale, (top + y + 0.5f) * scale)
     }
 
     @Test

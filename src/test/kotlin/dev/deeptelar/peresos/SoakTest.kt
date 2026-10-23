@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,10 +14,13 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import dev.deeptelar.telar.GraphResult
 import dev.deeptelar.telar.GraphSnapshot
@@ -155,6 +159,7 @@ class SoakTest {
                 12 to ("next day" to { nextDay() }),
                 5 to ("wardrobe" to { wear(Item.entries.random(random)) }),
                 3 to ("tell a fact" to { learn() }),
+                4 to ("touch it" to { touch() }),
                 2 to ("diary tab" to { diaryTab() }),
                 2 to ("town" to { town() }),
                 4 to ("reopen the window" to { reopen() }),
@@ -274,6 +279,21 @@ class SoakTest {
         tab("You")
         type(0, fact, "Tell it")
         facts += fact
+    }
+
+    /** Clicks a pixel of the sloth, whatever its size and wherever it hangs or lies, and it answers. */
+    private fun ComposeUiTest.touch() {
+        val sloth = model.session.snapshot.value.state // as the window draws it
+        val onTop = model.isFull(sloth)
+        val still = Portrait.pictures(sloth?.roundness ?: 0, onTop, model.wearing).first()
+        val stage = stage(WINDOW_SIZE.width.value * density.density, 170 * density.density, still, onTop)
+        val pixels = still.pixels.flatMapIndexed { y, line -> line.indices.filter { Portrait.part(line[it]) != null }.map { it to y } }
+        val (x, y) = pixels.random(random)
+        onRoot().performTouchInput { click(Offset((stage.left + x + 0.5f) * stage.scale, (stage.top + y + 0.5f) * stage.scale)) }
+        waitForIdle()
+        val part = assertNotNull(Portrait.part(still.pixels[y][x]))
+        val lines = (1..FED_UP + 3).map { said(part, feeling(model, model.session.snapshot.value), it, model.pile.size) }
+        assertTrue(lines.any { onAllNodesWithText(it).fetchSemanticsNodes().isNotEmpty() }, "it answers a touch on its ${part.name.lowercase()}")
     }
 
     private fun ComposeUiTest.diaryTab() {

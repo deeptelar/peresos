@@ -93,6 +93,12 @@ and the desktop tells you when the bite is ready. Quit from the window or the fa
 click). Running `peresos window` again just opens the window. Without a tray, it's an ordinary
 window, and closing it quits.
 
+Click the sloth itself and it answers, in a speech bubble over its head. Pat its head and it
+closes its eyes; tickle its belly and it laughs and kicks; poke it anywhere else and it opens its
+eyes and talks about what it's doing ("Mmf. Mouth full." while it chews). Keep poking and it
+pretends to sleep. The pointer turns into a hand over it. All of this happens in the window, with
+no Gemma call.
+
 The window and the terminal share `~/.peresos`, so they show the same sloth: feed it in the
 terminal and the window shows the new item a moment later. Only one of them can wake it at a time.
 

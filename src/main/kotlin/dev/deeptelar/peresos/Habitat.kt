@@ -1,10 +1,19 @@
 package dev.deeptelar.peresos
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -39,11 +48,15 @@ internal fun rememberTick(): Int {
 /**
  * Where Peresós lives: a branch across a jungle, drawn in the same big pixels as the sloth. The
  * leaves take the colors of the [season], the sky shows the [weather], day or night. It plays the
- * sloth's animation twice, then rests a few seconds, and again.
+ * sloth's animation twice, then rests a few seconds, and again. The sloth can be touched: the
+ * pointer turns into a hand over it.
  *
  * @param frames the sloth's animation, from [Portrait.pictures].
  * @param onTop it lies on top of its branch, so the branch is lower, with room above it.
  * @param tick the frame of the animations, from [rememberTick].
+ * @param touched the sloth reacting to a touch, from [Portrait.touched], in place of its animation.
+ * @param shake how many pixels to move it sideways, to wiggle.
+ * @param onTouch told where the person clicked the sloth.
  */
 @Composable
 internal fun Habitat(
@@ -54,13 +67,33 @@ internal fun Habitat(
     weather: Weather,
     tick: Int,
     modifier: Modifier = Modifier,
+    touched: Picture? = null,
+    shake: Int = 0,
+    onTouch: (Touch) -> Unit = {},
 ) {
     val letters = rememberTextMeasurer()
-    Canvas(modifier) {
-        val scale = max(2f, floor(min(size.width / COLUMNS, size.height / ROWS)))
-        val columns = (size.width / scale).toInt() + 1
-        val rows = (size.height / scale).toInt() + 1
-        val branch = if (onTop) rows * 2 / 3 else rows / 3
+    val still = frames.first()
+    val touch by rememberUpdatedState(onTouch)
+    var over by remember { mutableStateOf(false) }
+    val hands =
+        Modifier
+            .pointerInput(still, onTop) {
+                detectTapGestures { at -> stage(size.width.toFloat(), size.height.toFloat(), still, onTop).part(still, at.x, at.y)?.let(touch) }
+            }.pointerInput(still, onTop) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val at = event.changes.first().position
+                        over = event.type != PointerEventType.Exit && stage(size.width.toFloat(), size.height.toFloat(), still, onTop).part(still, at.x, at.y) != null
+                    }
+                }
+            }.pointerHoverIcon(if (over) PointerIcon.Hand else PointerIcon.Default)
+    Canvas(modifier.then(hands)) {
+        val stage = stage(size.width, size.height, still, onTop)
+        val scale = stage.scale
+        val columns = stage.columns
+        val rows = stage.rows
+        val branch = stage.branch
         val pixels = Pixels(this, scale)
         val sky = sky(weather, night)
         val leaves = leaves(season, weather, night)
@@ -91,9 +124,9 @@ internal fun Habitat(
 
         // The sloth, its branch on the branch of the scene.
         val cycle = frames.size * 2 + 15
-        val frame = frames[(tick % cycle).let { if (it < frames.size * 2) it % frames.size else 0 }]
-        val left = columns / 2 - frame.width / 2
-        val top = branch - frame.branch
+        val frame = touched ?: frames[(tick % cycle).let { if (it < frames.size * 2) it % frames.size else 0 }]
+        val left = stage.left + shake
+        val top = stage.top
         frame.pixels.forEachIndexed { y, line -> line.forEachIndexed { x, rgb -> if (rgb != EMPTY) pixels[left + x, top + y] = rgb } }
         val dark = night || weather == Weather.STORM
         val style = TextStyle(fontFamily = PixelFont, fontSize = if (scale >= 10) BIG else BODY, color = color(if (dark) 0xEFE6D2 else 0x2E3A30))
@@ -112,6 +145,45 @@ internal fun Habitat(
         // Lightning, now and then: a bright flash, then a fainter one.
         if (weather == Weather.STORM && tick % 37 >= 35) pixels.wash(columns, rows, 0xFFFFFF, if (tick % 37 == 35) 0.55f else 0.25f)
     }
+}
+
+/**
+ * Where everything sits in a habitat of [width] by [height] screen pixels: the size of one of its
+ * pixels, how many fit, the row of the branch, and the top left corner of the sloth's picture.
+ */
+internal class Stage(
+    val scale: Float,
+    val columns: Int,
+    val rows: Int,
+    val branch: Int,
+    val left: Int,
+    val top: Int,
+) {
+    /** The part of the sloth of [picture] at [x], [y] on the screen, or at a pixel next to it, so a near miss counts. */
+    fun part(
+        picture: Picture,
+        x: Float,
+        y: Float,
+    ): Touch? {
+        val px = floor(x / scale).toInt() - left
+        val py = floor(y / scale).toInt() - top
+        return listOf(0 to 0, 0 to -1, 0 to 1, -1 to 0, 1 to 0).firstNotNullOfOrNull { (dx, dy) ->
+            picture.pixels.getOrNull(py + dy)?.getOrNull(px + dx)?.let(Portrait::part)
+        }
+    }
+}
+
+internal fun stage(
+    width: Float,
+    height: Float,
+    picture: Picture,
+    onTop: Boolean,
+): Stage {
+    val scale = max(2f, floor(min(width / COLUMNS, height / ROWS)))
+    val columns = (width / scale).toInt() + 1
+    val rows = (height / scale).toInt() + 1
+    val branch = if (onTop) rows * 2 / 3 else rows / 3
+    return Stage(scale, columns, rows, branch, columns / 2 - picture.width / 2, branch - picture.branch)
 }
 
 /** A painter of one picture, for the window's icon. */

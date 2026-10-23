@@ -52,6 +52,35 @@ object Portrait {
         wearing: Collection<Item> = emptyList(),
     ): List<Picture> = drawings(roundness, onTop, wearing).map { (canvas, branch) -> canvas.picture(branch) }
 
+    /**
+     * The sloth while someone touches it, for as long as it reacts: a pat on the head closes its eyes,
+     * a tickle on the belly makes it laugh and kick, a poke opens its eyes wide. Fed up, it shuts them.
+     */
+    internal fun touched(
+        roundness: Int,
+        onTop: Boolean,
+        wearing: Collection<Item>,
+        touch: Touch,
+        fedUp: Boolean = false,
+    ): Picture {
+        val pose =
+            when {
+                fedUp || touch == Touch.HEAD -> Pose(closed = true)
+                touch == Touch.BELLY -> Pose(mouth = 2, kick = 1)
+                else -> Pose(mouth = 1)
+            }
+        return drawings(roundness, onTop, wearing, listOf(pose)).single().let { (canvas, branch) -> canvas.picture(branch) }
+    }
+
+    /** Which part of the sloth a pixel of its picture is, or `null` for its branch and the air around it. */
+    internal fun part(rgb: Int): Touch? =
+        when (rgb) {
+            EMPTY, BRANCH, BRANCH_SHADOW -> null
+            BELLY -> Touch.BELLY
+            FACE, FUR_DARK, EYE, STRIPE, NOSE, MOUTH, TONGUE -> Touch.HEAD
+            else -> Touch.FUR
+        }
+
     /** What the sloth is and does, to write under its portrait. */
     fun caption(
         roundness: Int,
@@ -64,17 +93,18 @@ object Portrait {
         return "${if (grew) "It grew! Peresós is now" else "Peresós is"} ${phase.title}, $doing ($finished)."
     }
 
-    /** Each frame, with the row of the top of its branch. */
+    /** Each frame, with the row of the top of its branch; or one for each of [only], to show one face. */
     private fun drawings(
         roundness: Int,
         onTop: Boolean,
         wearing: Collection<Item>,
+        only: List<Pose>? = null,
     ): List<Pair<Canvas, Int>> {
         val build = builds.getValue(phase(roundness))
         val room = wearing.maxOfOrNull { it.room } ?: 0
         val items = wearing.sortedBy { it.ordinal }
-        if (onTop) return asleep.mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room) to build.height - 5 }
-        return poses.getValue(phase(roundness)).mapIndexed { tick, pose -> draw(build, pose, tick, items, room) to 0 }
+        if (onTop) return (only ?: asleep).mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room) to build.height - 5 }
+        return (only ?: poses.getValue(phase(roundness))).mapIndexed { tick, pose -> draw(build, pose, tick, items, room) to 0 }
     }
 
     /** The size of the picture, and of the head and the body in it, in pixels. Both ovals are around the middle column. */

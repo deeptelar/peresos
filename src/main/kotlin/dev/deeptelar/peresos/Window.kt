@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -57,10 +58,21 @@ internal fun SlothScreen(
     val roundness = sloth?.roundness ?: 0
     val frames = remember(roundness, onTop, model.wearing) { Portrait.pictures(roundness, onTop, model.wearing) }
     var page by remember { mutableStateOf(Page.NOW) }
+    // The last touch, kept after its reaction ends, to count the touches in a row. The reaction ends
+    // with the first tick after it, which draws the screen again.
+    var last by remember { mutableStateOf<Reaction?>(null) }
+    val reaction = last?.takeIf { System.currentTimeMillis() - it.at < REACTION_MS }
+    val touched = remember(reaction, frames) { reaction?.let { Portrait.touched(roundness, onTop, model.wearing, it.touch, it.fedUp) } }
     Column(Modifier.fillMaxSize().drawBehind { planks() }) {
         header()
         Box(Modifier.fillMaxWidth().height(170.dp)) {
-            Habitat(frames, onTop, night, model.season, model.weather, tick, Modifier.fillMaxSize())
+            Habitat(frames, onTop, night, model.season, model.weather, tick, Modifier.fillMaxSize(), touched, shake(reaction, tick)) { touch ->
+                val now = System.currentTimeMillis()
+                val count = last?.takeIf { now - it.at < IN_A_ROW_MS }?.count?.plus(1) ?: 1
+                last = Reaction(touch, said(touch, feeling(model, snapshot), count, model.pile.size), count, tick, now)
+            }
+            // What it says when touched, above its head.
+            reaction?.let { PixelText(it.line, Modifier.align(Alignment.TopCenter).padding(top = 8.dp).widthIn(max = 300.dp).pixelBox(Ink.paper).padding(horizontal = 8.dp, vertical = 4.dp), size = SMALL) }
             // The season and the weather, in a corner of the habitat.
             PixelText(outside(model, night), Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp), size = SMALL, color = Ink.paper)
         }
@@ -79,6 +91,19 @@ internal fun SlothScreen(
             }
         }
         PixelTabs(listOf("Now", "Pile ${model.pile.size}", "Diary", "Wear", "You"), page.ordinal, Modifier.padding(12.dp)) { page = Page.entries[it] }
+    }
+}
+
+/** A tickle wiggles the sloth from side to side; a poke makes it jump once. */
+private fun shake(
+    reaction: Reaction?,
+    tick: Int,
+): Int {
+    val since = tick - (reaction?.tick ?: return 0)
+    return when {
+        reaction.fedUp || reaction.touch == Touch.HEAD -> 0
+        reaction.touch == Touch.BELLY -> if (since < 8) since % 2 else 0
+        else -> if (since < 2) 1 else 0
     }
 }
 
