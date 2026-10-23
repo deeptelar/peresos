@@ -118,7 +118,7 @@ private fun report(sloth: Sloth) {
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
             }
-            sloth.diary.lastOrNull()?.let { say("Diary: \"${it.text}\"") }
+            sloth.diary.lastOrNull()?.let { entry -> wrap("Diary: \"${entry.text}\"", 84).forEachIndexed { index, line -> say(if (index == 0) line else "       $line") } }
         }
     }
 }
