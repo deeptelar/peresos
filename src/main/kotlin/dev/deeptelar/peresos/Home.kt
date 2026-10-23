@@ -42,6 +42,8 @@ class Home(val path: Path) {
     private val wearFile = path.resolve("wear")
     private val awakeFile = path.resolve("awake.lock")
     private val placeFile = path.resolve("place")
+    private val windowFile = path.resolve("window.lock")
+    private val callFile = path.resolve("window.call")
 
     /** What you told it about yourself, one fact per line. */
     fun about(): String = aboutFile.readTextOrEmpty()
@@ -88,9 +90,23 @@ class Home(val path: Path) {
      * Wakes it, unless it is already awake in another terminal or window: two wakes at once would
      * both write its checkpoint. Close what this returns when the wake is over; `null` means it is busy.
      */
-    fun awake(): AutoCloseable? {
+    fun awake(): AutoCloseable? = lock(awakeFile)
+
+    /** Holds while its window runs, so a second `peresos window` shows that one instead. `null` means one runs already. */
+    fun window(): AutoCloseable? = lock(windowFile)
+
+    /** Asks the window that runs to show itself. */
+    fun callWindow() {
         path.createDirectories()
-        val channel = FileChannel.open(awakeFile, CREATE, WRITE)
+        callFile.writeText("${System.currentTimeMillis()}\n")
+    }
+
+    /** Changes every time something asked the window to show itself. */
+    fun windowCalls(): Long = callFile.toFile().lastModified()
+
+    private fun lock(file: Path): AutoCloseable? {
+        path.createDirectories()
+        val channel = FileChannel.open(file, CREATE, WRITE)
         val lock =
             try {
                 channel.tryLock()

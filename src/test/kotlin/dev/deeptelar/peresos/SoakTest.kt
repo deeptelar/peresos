@@ -1,8 +1,11 @@
 package dev.deeptelar.peresos
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
@@ -109,7 +112,7 @@ class SoakTest {
     @Test
     fun `a long walk through the window`() =
         runComposeUiTest(testTimeout = 24.hours) {
-            setContent { SlothScreen(model, night) }
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model, night) } }
             settle()
             val fds = mutableListOf<Int>()
             try {
@@ -177,6 +180,7 @@ class SoakTest {
 
     /** Wake it, or Something easy when [lazy], or Try again after Ollama stopped it halfway. */
     private fun ComposeUiTest.wake(lazy: Boolean = false) {
+        tab("Now")
         val button = if (stopped) "Try again" else if (lazy) "Something easy" else "Wake it"
         if (onAllNodesWithText(button).fetchSemanticsNodes().isEmpty()) return // it holds a bite: there is no button to wake it
         val canWake = stopped || (pile.isNotEmpty() && !ateToday())
@@ -211,6 +215,7 @@ class SoakTest {
     }
 
     private fun ComposeUiTest.answer(answer: Answer) {
+        tab("Now")
         val button = buttons.getValue(answer)
         if (onAllNodesWithText(button).fetchSemanticsNodes().isEmpty()) return
         click(button)
@@ -259,7 +264,7 @@ class SoakTest {
     }
 
     private fun ComposeUiTest.wear(item: Item) {
-        tab("Wardrobe")
+        tab("Wear")
         click(item.name.lowercase())
         if (!wearing.remove(item)) wearing.removeAll { it.slot == item.slot }.also { wearing += item }
     }
@@ -303,6 +308,7 @@ class SoakTest {
         val lock = assertNotNull(home.awake(), "the window let go of its lock")
         val before = model.session.snapshot.value
         lock.use {
+            tab("Now")
             val button = listOf("Wake it", "Take it", "Try again").firstOrNull { onAllNodesWithText(it).fetchSemanticsNodes().isNotEmpty() } ?: return
             if (button == "Wake it" && (pile.isEmpty() || ateToday())) return
             click(button)
@@ -368,6 +374,7 @@ class SoakTest {
 
     /** The person feeds it in the same instant it swallows: neither may lose the other's change. */
     private fun ComposeUiTest.answerAndFeed() {
+        tab("Now")
         if (onAllNodesWithText("Take it").fetchSemanticsNodes().isEmpty()) return feed(items.random(random))
         val item = "Call the plumber about the noise ${random.nextInt(1000)}"
         val answer = listOf(Answer.YES, Answer.NO).random(random) // a later would put the item after or before the new one
@@ -394,6 +401,7 @@ class SoakTest {
         assertEquals(yes, dones, "a file in done for every yes")
         assertNotNull(home.awake(), "the lock is free between actions").close()
 
+        tab("Now")
         val sloth = state() ?: return assertTrue(yes + no + later == 0)
         assertEquals(yes + no, sloth.roundness, "roundness")
         assertEquals(yes + no + later, sloth.meals.size, "meals")

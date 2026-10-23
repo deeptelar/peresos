@@ -1,89 +1,54 @@
 package dev.deeptelar.peresos
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
-import dev.deeptelar.peresos.Home.Companion.model
 import dev.deeptelar.telar.GraphSnapshot
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import java.awt.Dimension
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.LocalTime
 
-/**
- * Opens its home in a window, `peresos window`. It shares [home] with the terminal.
- *
- * @param season and [weather] show this season or weather instead of the real one, to try them.
- */
-fun window(
-    home: Home,
-    hungry: Boolean = false,
-    season: Season? = null,
-    weather: Weather? = null,
-) = application {
-    val client = remember { HttpClient(CIO) }
-    val scope = rememberCoroutineScope()
-    val model =
-        remember {
-            val graph = sloth(model(client), home.pile, hungry, diarist = model(client, think = false), about = home::about)
-            SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather)
-        }
-    val icon = remember { PicturePainter(Portrait.pictures(0).first()) }
-    Window(
-        onCloseRequest = {
-            client.close()
-            exitApplication()
-        },
-        state = rememberWindowState(size = DpSize(1120.dp, 760.dp)),
-        title = "Peresós",
-        icon = icon,
-    ) {
-        LaunchedEffect(Unit) { window.minimumSize = Dimension(960, 640) }
-        SlothScreen(model)
-    }
-}
+/** The pages of the window, in the bar at its bottom. */
+private enum class Page { NOW, PILE, DIARY, WEAR, YOU }
 
-/** Everything in the window: the habitat on the left, and on the right a board with what it is doing and its tabs. */
+/**
+ * Everything in the window, in one column about the size of a phone: the habitat at the top, the
+ * page below it, and the bar of pages at the bottom.
+ *
+ * @param header the bar to drag the window by, when it has no frame of its own.
+ */
 @Composable
 internal fun SlothScreen(
     model: SlothModel,
     night: Boolean = LocalTime.now().hour !in 7..19,
+    header: @Composable () -> Unit = {},
 ) {
     val snapshot by model.session.snapshot.collectAsState()
     val sloth = snapshot.state
@@ -91,23 +56,43 @@ internal fun SlothScreen(
     val onTop = model.isFull(sloth)
     val roundness = sloth?.roundness ?: 0
     val frames = remember(roundness, onTop, model.wearing) { Portrait.pictures(roundness, onTop, model.wearing) }
-    Row(Modifier.fillMaxSize().drawBehind { planks() }) {
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            Habitat(frames, onTop, night, model.season, model.weather, tick, Modifier.weight(1f).fillMaxWidth())
-            val grew = model.ateHere && snapshot is GraphSnapshot.Completed && sloth?.rest == Rest.NONE && Portrait.phase(roundness) != Portrait.phase(roundness - 1)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                PixelText(Portrait.caption(roundness, grew, onTop), Modifier.weight(1f), size = BODY, color = if (grew) Ink.yellow else Ink.paper)
-                PixelText(outside(model, night), size = SMALL, color = Ink.paperDark)
+    var page by remember { mutableStateOf(Page.NOW) }
+    Column(Modifier.fillMaxSize().drawBehind { planks() }) {
+        header()
+        Box(Modifier.fillMaxWidth().height(170.dp)) {
+            Habitat(frames, onTop, night, model.season, model.weather, tick, Modifier.fillMaxSize())
+            // The season and the weather, in a corner of the habitat.
+            PixelText(outside(model, night), Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp), size = SMALL, color = Ink.paper)
+        }
+        val grew = model.ateHere && snapshot is GraphSnapshot.Completed && sloth?.rest == Rest.NONE && Portrait.phase(roundness) != Portrait.phase(roundness - 1)
+        PixelText(Portrait.caption(roundness, grew, onTop), Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), size = SMALL, color = if (grew) Ink.yellow else Ink.paper)
+        Column(
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp).pixelBox(Ink.paper).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            when (page) {
+                Page.NOW -> Now(model, snapshot, tick)
+                Page.PILE -> Pile(model)
+                Page.DIARY -> Diary(sloth)
+                Page.WEAR -> Wardrobe(model)
+                Page.YOU -> About(model)
             }
         }
-        Column(Modifier.width(480.dp).fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 470.dp).pixelBox(Ink.paper).padding(20.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Now(model, snapshot, tick)
-            }
-            Tabs(model, sloth, Modifier.weight(1f))
+        PixelTabs(listOf("Now", "Pile ${model.pile.size}", "Diary", "Wear", "You"), page.ordinal, Modifier.padding(12.dp)) { page = Page.entries[it] }
+    }
+}
+
+/** The top of a window without a frame: its name, to drag it by, and buttons to hide it in the tray or quit. */
+@Composable
+internal fun TitleBar(
+    onHide: (() -> Unit)?,
+    onQuit: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        PixelText("Peresós", Modifier.weight(1f), color = Ink.paper)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onHide?.let { PixelButton("Hide", Ink.paperDark, it, small = true) }
+            PixelButton("Quit", Ink.paperDark, onQuit, small = true)
         }
     }
 }
@@ -193,12 +178,15 @@ private fun ColumnScope.Bite(
     bite: Bite,
     why: String?,
 ) {
-    why?.let { Line("It picked the easiest one: $it") }
-    PixelText("It chewed this one  ·  ${bite.kind.name.lowercase()}", size = SMALL, color = Ink.faint)
-    Title(bite.title)
-    // A long version scrolls in its own box, so the buttons under it stay in sight.
-    Box(Modifier.fillMaxWidth().heightIn(max = 230.dp).pixelBox(Ink.field, raised = false)) {
-        SelectionContainer { PixelText(bite.finished.trim(), Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp), size = BODY) }
+    // What it chewed scrolls, however long; the answers stay in sight at the bottom.
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        why?.let { Hint("It picked the easiest one: $it") }
+        PixelText("It chewed this one  ·  ${bite.kind.name.lowercase()}", size = SMALL, color = Ink.faint)
+        Title(bite.title)
+        Box(Modifier.fillMaxWidth().pixelBox(Ink.field, raised = false)) {
+            SelectionContainer { PixelText(bite.finished.trim(), Modifier.fillMaxWidth().padding(14.dp), size = BODY) }
+        }
+        Hint("Or hide the window: it keeps it in its mouth until you come back.")
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         PixelButton("Take it", Ink.green, { model.answer(Answer.YES) })
@@ -207,12 +195,34 @@ private fun ColumnScope.Bite(
         PixelButton("Another try", Ink.blue, { model.answer(Answer.AGAIN) })
         PixelButton("Copy", Ink.paperDark, { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(bite.finished.trim()), null) })
     }
-    Hint("Or close the window: it keeps it in its mouth until you come back.")
 }
 
 /** Between wakes: what happened in the last one, and the button to wake it. */
 @Composable
 private fun ColumnScope.Rested(
+    model: SlothModel,
+    sloth: Sloth?,
+) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LastWake(model, sloth)
+    }
+    val reason =
+        when {
+            model.ateToday(sloth) -> "It already ate today. One item a day is plenty. Come back tomorrow."
+            model.pile.isEmpty() && model.isFull(sloth) -> "It sleeps on top of its branch, full, until you feed it."
+            model.pile.isEmpty() -> "The pile is empty. Feed it something on the Pile page."
+            else -> null
+        }
+    reason?.let { Hint(it) } ?: Hint("Wake it eats the oldest item. Something easy lets it pick the easiest one, done the laziest way.")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PixelButton("Wake it", Ink.green, { model.wake() }, enabled = reason == null)
+        PixelButton("Something easy", Ink.yellow, { model.wake(lazy = true) }, enabled = reason == null)
+    }
+}
+
+/** What happened in the last wake, if it was today, or that it sleeps. */
+@Composable
+private fun LastWake(
     model: SlothModel,
     sloth: Sloth?,
 ) {
@@ -240,38 +250,6 @@ private fun ColumnScope.Rested(
     } else {
         Title("Zzz...")
         Line("Peresós is asleep. Wake it when you like: it eats one item of the pile a day.")
-    }
-    val reason =
-        when {
-            model.ateToday(sloth) -> "It already ate today. One item a day is plenty. Come back tomorrow."
-            model.pile.isEmpty() && model.isFull(sloth) -> "It sleeps on top of its branch, full, until you feed it."
-            model.pile.isEmpty() -> "The pile is empty. Feed it something below."
-            else -> null
-        }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PixelButton("Wake it", Ink.green, { model.wake() }, enabled = reason == null)
-        PixelButton("Something easy", Ink.yellow, { model.wake(lazy = true) }, enabled = reason == null)
-    }
-    reason?.let { Hint(it) } ?: Hint("Wake it eats the oldest item. Something easy lets it pick the easiest one, done the laziest way.")
-}
-
-@Composable
-private fun Tabs(
-    model: SlothModel,
-    sloth: Sloth?,
-    modifier: Modifier = Modifier,
-) {
-    var tab by remember { mutableIntStateOf(0) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PixelTabs(listOf("Pile ${model.pile.size}", "Diary", "Wardrobe", "You"), tab) { tab = it }
-        Box(Modifier.weight(1f).fillMaxWidth().pixelBox(Ink.paper).padding(16.dp)) {
-            when (tab) {
-                0 -> Pile(model)
-                1 -> Diary(sloth)
-                2 -> Wardrobe(model)
-                else -> About(model)
-            }
-        }
     }
 }
 

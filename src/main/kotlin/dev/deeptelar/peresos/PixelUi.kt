@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -146,21 +147,22 @@ internal fun PixelButton(
     }
 }
 
-/** Tabs like the labels of a ledger: the chosen one is parchment, the others bark. */
+/** Tabs like the labels of a ledger, spread over the width: the chosen one is parchment, the others bark. */
 @Composable
 internal fun PixelTabs(
     titles: List<String>,
     selected: Int,
+    modifier: Modifier = Modifier,
     onSelect: (Int) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         titles.forEachIndexed { index, title ->
             val chosen = index == selected
             Box(
                 Modifier
                     .pixelBox(if (chosen) Ink.paper else Ink.woodLight, raised = chosen)
                     .clickable { onSelect(index) }
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .padding(horizontal = 7.dp, vertical = 7.dp),
             ) {
                 PixelText(title, color = if (chosen) Ink.text else Ink.paper, maxLines = 1)
             }

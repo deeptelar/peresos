@@ -56,7 +56,7 @@ class WindowTest {
         name: String,
         night: Boolean = false,
     ) {
-        val scene = ImageComposeScene(1120, 760, Density(1f)) { SlothScreen(model, night) }
+        val scene = ImageComposeScene(WINDOW_SIZE.width.value.toInt(), WINDOW_SIZE.height.value.toInt(), Density(1f)) { SlothScreen(model, night) }
         try {
             scene.render(0)
             val image = scene.render(1_000_000_000)

@@ -63,7 +63,7 @@ peresos --lazy                                               # or the easiest on
 peresos pile                                                 # what is still on the pile
 peresos diary                                                # what it wrote about its meals
 peresos wear sunglasses coffee                               # dress it up (peresos wear lists it all)
-peresos window                                               # its home on your desktop
+peresos window                                               # its home in your tray
 peresos place "Girona"                                       # optional: that town's weather in the window
 ```
 
@@ -78,12 +78,20 @@ slow, but you were going to wait a day anyway.
 
 ## A home on your desktop
 
-`peresos window` opens the sloth's habitat: a pixel-art jungle where it hangs from its branch and
-plays its animations, next to a board with everything the terminal does, as buttons. Wake it, read
-what Gemma prepared, and take it, bin it, leave it for later or ask for another try; feed the pile,
-read the diary, dress it up.
+`peresos window` puts the sloth in your tray, like JetBrains Toolbox: a small pixel face in the top
+bar, and under it a window about the size of a phone. At the top is its habitat, a pixel-art jungle
+where it hangs from its branch and plays its animations. Below that are pages for everything the
+terminal does, as buttons: wake it, read what Gemma prepared and take it, bin it, leave it for later
+or ask for another try; feed the pile, read the diary, dress it up.
 
-![The window: putting a barretina on, waking it, Gemma's reply to the dentist, Take it, and the diary line](docs/peresos-window.gif)
+![Peresós in the tray: its face in the top bar with a yellow badge, and the window under it with a lazy bite waiting for an answer](docs/peresos-window.png)
+
+Click the face to open or hide the window, or click anywhere else to hide it. It stays out of the
+dock, and the face shows what the sloth is doing: a green badge while it chews, a yellow one when a
+bite waits for your answer, a red one when Ollama is gone. Gemma takes a minute, so wake it, hide it,
+and the desktop tells you when the bite is ready. Quit from the window or the face's menu (right
+click). Running `peresos window` again just opens the window. Without a tray, it's an ordinary
+window, and closing it quits.
 
 The window and the terminal share `~/.peresos`, so they show the same sloth: feed it in the
 terminal and the window shows the new item a moment later. Only one of them can wake it at a time.
