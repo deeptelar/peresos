@@ -314,7 +314,10 @@ class SoakTest {
             click(button)
             assertTrue(model.busy, "the window sees the terminal has it")
             assertExists("Peresós is awake in a terminal. Answer it there, then come back.")
-            assertEquals(before, model.session.snapshot.value, "the window did nothing")
+            // The look every two seconds may read a stopped wake again from the checkpoint, as paused: the same sloth.
+            val now = model.session.snapshot.value
+            assertTrue(now !is GraphSnapshot.Running, "the window did nothing")
+            assertEquals(before.state, now.state, "the window did nothing")
         }
         click("Look again")
         settle()
