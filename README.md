@@ -211,6 +211,12 @@ flowchart LR
   checkpoint, the lock and the screen after every action. `./gradlew soak -Psteps=5000` runs it
   long, `-Pseed=7` repeats a walk, and `-Pgemma` uses the real model.
 
+## Contributing
+
+Help is welcome, also without code: try the installer on your system and say what you saw. The
+issues labeled [testing](https://github.com/deeptelar/peresos/issues?q=is%3Aissue+is%3Aopen+label%3Atesting)
+say what to look at. [CONTRIBUTING.md](CONTRIBUTING.md) has how to build, test and package it.
+
 ## Credits
 
 - [Gemma 4](https://ai.google.dev/gemma) by Google, the open-weight model that does the work.

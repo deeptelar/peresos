@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in Peresós does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report of peresos doctor --report
+      description: >-
+        Run `peresos doctor --report` and paste the file it wrote here (it can open this page with
+        the report filled in). It has no word of your pile, your diary or what Peresós knows about
+        you, but read it first: it has the paths of your computer.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - install.sh with apt (Debian, Ubuntu)
+        - install.sh in my home (another Linux)
+        - install.sh on macOS
+        - install.ps1 on Windows
+        - Built it myself
+    validations:
+      required: true
