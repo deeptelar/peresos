@@ -107,5 +107,9 @@ val appImage by tasks.registering(Exec::class) {
         else -> args("--name", "peresos")
     }
     doFirst { dest.deleteRecursively() }
+    // Without inputs, Gradle would take an old image for up to date, whatever changed in the code.
+    inputs.dir(layout.buildDirectory.dir("install/peresos/lib"))
+    inputs.file(icon)
+    inputs.dir("packaging")
     outputs.dir(dest)
 }
