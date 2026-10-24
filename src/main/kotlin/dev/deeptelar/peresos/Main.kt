@@ -11,10 +11,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
 import java.awt.Desktop
+import java.io.IOException
 import java.net.ConnectException
 import java.net.URI
+import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.exists
+import kotlin.io.path.isRegularFile
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -46,6 +49,7 @@ private suspend fun run(args: Array<String>) {
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
         "uninstall" -> uninstall()
+        "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")
         "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
         // Opened from the Finder, the app of macOS has no terminal: it opens the window.
@@ -105,6 +109,34 @@ private fun uninstall() {
     say(if (installed is Installed.Windows) "Peresós leaves as soon as this command ends." else "Peresós is gone. Thank you for letting it eat your backlog.")
     if (!forget && home.path.exists()) say("Your pile and its diary stay in ${home.shown}. Delete that folder to forget them too.")
     say("Ollama and $modelName stay, for other apps. To free their space too: ollama rm $modelName")
+}
+
+/** `peresos update`: asks GitHub for the latest release, and installs it the way Peresós was installed, if the person says so. */
+private suspend fun update(updater: Updater) {
+    val installed = installed() ?: return say("Peresós does not know how it was installed in ${System.getProperty("jpackage.app-path")}. Install it again: ${Updater.ONE_LINE}")
+    if (installed == Installed.Source) return say("Peresós runs from its source here: update it with git pull.")
+    val latest =
+        try {
+            updater.latest()
+        } catch (e: IOException) {
+            return say("Could not ask GitHub for the latest version: ${e.message}")
+        }
+    if (latest == null) {
+        if (!yes("Install Peresós from ${updater.from} over ${updater.current}?")) return say("Nothing changed.")
+    } else {
+        if (!isNewer(latest, updater.current)) return say("Peresós ${updater.current} is the latest version.")
+        say("Peresós $latest is out, and you have ${updater.current}. What is new: ${Updater.RELEASES}")
+        if (!yes("Update it now?")) return say("Nothing changed. Update it whenever you like: peresos update")
+    }
+    // Its window would keep running from the files that change.
+    val window = home.window() ?: return say("Its window is open. Quit Peresós from its menu, then run peresos update again.")
+    window.use {
+        try {
+            updater.update(installed, terminal = true)
+        } catch (e: IOException) {
+            return say(e.message.orEmpty())
+        }
+    }
 }
 
 /** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
@@ -230,13 +262,56 @@ private suspend fun showPortrait(
     say(Portrait.caption(roundness, grew, onTop))
 }
 
-private fun feed(pile: Pile, words: List<String>) {
+/**
+ * `peresos feed`: puts what is typed or piped on the pile, or the files it is given, one item each.
+ * With `--notify`, as from the menu of the file manager, the desktop says what happened.
+ */
+private fun feed(
+    pile: FilePile,
+    args: List<String>,
+) {
+    val notify = "--notify" in args
+    val words = args - "--notify"
+    val paths = words.map { runCatching { Path.of(it) }.getOrNull() }
+    if (paths.isNotEmpty() && paths.all { it?.isRegularFile() == true }) return feedFiles(pile, paths.filterNotNull(), notify)
+    // Names of files it eats, such as a mistyped photo.jpg, are not an item to do.
+    if (paths.isNotEmpty() && paths.all { it != null && Food.of(it) != null }) {
+        val missing = paths.first { it?.isRegularFile() != true }
+        return say("There is no file at $missing.").also { if (notify) notifyDesktop("Peresós cannot eat that", "There is no file at $missing.") }
+    }
     val item = words.joinToString(" ").ifBlank { generateSequence(::readLine).joinToString("\n") }
     if (item.isBlank()) return println(USAGE)
     pile.add(item)
-    val size = pile.items().size
-    say("Peresós looks at the pile: $size ${if (size == 1) "item" else "items"}. It will get to it. Eventually.")
+    say("Peresós looks at the pile: ${items(pile.items().size)}. It will get to it. Eventually.")
 }
+
+private fun feedFiles(
+    pile: FilePile,
+    files: List<Path>,
+    notify: Boolean,
+) {
+    val failed =
+        files.mapNotNull { file ->
+            try {
+                pile.addFile(file)
+                null
+            } catch (e: IllegalArgumentException) {
+                e.message
+            }
+        }
+    val fed = files.size - failed.size
+    val news =
+        when {
+            fed == 0 -> null
+            files.size == 1 -> "Peresós put ${files.single().fileName} on the pile: ${items(pile.items().size)}."
+            else -> "Peresós put $fed files on the pile: ${items(pile.items().size)}."
+        }
+    news?.let(::say)
+    failed.forEach(::say)
+    if (notify) notifyDesktop(if (fed == 0) "Peresós cannot eat that" else "Peresós has more to eat", listOfNotNull(news, failed.firstOrNull()).joinToString(" "))
+}
+
+private fun items(count: Int) = "$count ${if (count == 1) "item" else "items"}"
 
 private fun about(words: List<String>) {
     home.learn(words.joinToString(" "))
@@ -270,7 +345,7 @@ private suspend fun wear(
 private fun showPile(pile: Pile) {
     val items = pile.items()
     if (items.isEmpty()) return say("The pile is empty.")
-    items.forEachIndexed { index, item -> println("  ${index + 1}. ${item.lines().first().take(70)}") }
+    items.forEachIndexed { index, item -> println("  ${index + 1}. ${shown(item).lines().first().take(70)}") }
 }
 
 private suspend fun showDiary(sloth: Sloth?) {
@@ -319,6 +394,7 @@ private val USAGE =
     Peresós eats one item of your backlog a day, and you only say yes or no.
 
       peresos feed "text"     put something you avoid on the pile (or pipe text into it)
+      peresos feed photo.jpg  or a photo, a PDF or a text file: Gemma reads it on this computer
       peresos about "fact"    tell it something about you that helps, like when you are home
       peresos                 wake it: it eats the oldest item and shows you the finished version
       peresos --lazy          it picks the easiest item instead, and does it the laziest way
@@ -328,8 +404,9 @@ private val USAGE =
       peresos window          open its home in a window, where you can do all of this with buttons
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
+      peresos update          install its latest version, if there is a newer one (it asks GitHub)
       peresos uninstall       remove it from this computer; it asks before it deletes your pile
 
     It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer,
-    except the town you give peresos place.
+    except the town you give peresos place, and peresos update, which asks GitHub for the latest version.
     """.trimIndent()

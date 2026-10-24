@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import dev.deeptelar.telar.GraphSnapshot
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.nio.file.Path
 import java.time.LocalTime
 
 /** The pages of the window, in its menu. Now is the one it opens on, and the others go back to it. */
@@ -50,12 +51,14 @@ internal val HABITAT_HEIGHT = 144.dp
  *
  * @param header the bar to drag the window by, when it has no frame of its own.
  * @param onQuit quits the app, from the menu.
+ * @param chooseFiles asks the person for files to feed.
  */
 @Composable
 internal fun SlothScreen(
     model: SlothModel,
     night: Boolean = LocalTime.now().hour !in 7..19,
     onQuit: (() -> Unit)? = null,
+    chooseFiles: () -> List<Path> = ::chooseFiles,
     header: @Composable () -> Unit = {},
 ) {
     val snapshot by model.session.snapshot.collectAsState()
@@ -101,7 +104,7 @@ internal fun SlothScreen(
                 }
                 when (page) {
                     Page.NOW -> Now(model, snapshot, tick)
-                    Page.PILE -> Pile(model)
+                    Page.PILE -> Pile(model, chooseFiles)
                     Page.DIARY -> Diary(sloth)
                     Page.WEAR -> Wardrobe(model)
                     Page.YOU -> You(model)
@@ -284,14 +287,19 @@ private fun LastWake(
 }
 
 @Composable
-private fun Pile(model: SlothModel) {
+private fun Pile(
+    model: SlothModel,
+    choose: () -> List<Path>,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Asking("Something you keep putting off", "Feed it", model::feed)
+        PixelLink("Or feed a photo, a PDF or a text file") { model.feedFiles(choose()) }
+        model.feedTrouble?.let { Hint(it) }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
-                    PixelText(item.lines().first(), size = BODY, maxLines = 2)
+                    PixelText(shown(item).lines().first(), size = BODY, maxLines = 2)
                 }
             }
         }
@@ -353,7 +361,31 @@ private fun ColumnScope.About(
         PixelText("Feed it what you keep putting off. Once a day, Gemma prepares one item on this computer, and you say take it, bin it or later.", size = BODY)
         model.openGuide?.let { PixelButton("How it works", Ink.blue, it, small = true) }
         SelectionContainer { PixelText(GUIDE.substringBefore("#").removePrefix("https://"), size = SMALL, color = Ink.faint) }
+        if (model.canUpdate) Updating(model, onQuit)
         if (installed != null) PixelLink("Uninstall") { asking = true }
+    }
+}
+
+/** Check for updates, and what GitHub said. */
+@Composable
+private fun Updating(
+    model: SlothModel,
+    onQuit: (() -> Unit)?,
+) {
+    when (val update = model.update) {
+        null -> PixelLink("Check for updates", onClick = model::checkUpdate)
+        Update.Checking -> Hint("Asking GitHub for the latest version...")
+        Update.Latest -> Hint("This is the latest version.")
+        is Update.Available ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PixelText(update.news, Modifier.weight(1f), size = BODY)
+                PixelButton("Update", Ink.green, { model.installUpdate { onQuit?.invoke() } }, small = true)
+            }
+        Update.Installing -> Hint("Updating. It opens again when it is done.")
+        is Update.Failed -> {
+            SelectionContainer { PixelText(update.message, size = SMALL, color = Ink.red) }
+            PixelLink("Try again", onClick = model::checkUpdate)
+        }
     }
 }
 

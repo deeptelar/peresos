@@ -36,7 +36,7 @@ class SlothTest {
             items += item
         }
 
-        override fun keep(day: String, bite: Bite) {
+        override fun keep(day: String, item: String, bite: Bite) {
             kept += bite
         }
     }

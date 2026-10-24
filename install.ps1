@@ -6,6 +6,7 @@
 # menu, where it opens its window. Then it runs peresos doctor, which checks Ollama and Gemma.
 #
 # PERESOS_FROM takes the files from another address or a folder, to try a build before a release.
+# Update in the window of Peresós runs this script again, with PERESOS_NO_DOCTOR=1.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # the progress bar makes Invoke-WebRequest many times slower
 
@@ -55,8 +56,19 @@ $shortcut.TargetPath = Join-Path $dir 'peresos-window.exe'
 $shortcut.Description = 'A sloth that eats one item of your backlog a day'
 $shortcut.Save()
 
-Say "$name is installed in $dir, and in the Start menu."
+# Feed to Peresós in the menu of photos, PDFs and text files in the Explorer (under Show more options
+# on Windows 11). The window's launcher runs it, so no console opens. peresos uninstall removes it.
+$window = Join-Path $dir 'peresos-window.exe'
+foreach ($type in 'image', '.pdf', 'text') {
+    $key = "HKCU:\Software\Classes\SystemFileAssociations\$type\shell\Peresos"
+    New-Item -Path $key -Value "Feed to $name" -Force | Out-Null
+    New-ItemProperty -Path $key -Name 'Icon' -Value $window -Force | Out-Null
+    New-Item -Path "$key\command" -Value "`"$window`" feed --notify `"%1`"" -Force | Out-Null
+}
+
+Say "$name is installed in $dir, in the Start menu, and in the menu of files: Feed to $name."
 Say "Type peresos in any new terminal. To remove it: peresos uninstall"
+if ($env:PERESOS_NO_DOCTOR) { return }
 Write-Host ''
 Say "Now $name checks what it needs:"
 Write-Host ''

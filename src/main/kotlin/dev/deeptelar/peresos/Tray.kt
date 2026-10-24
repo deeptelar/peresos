@@ -21,6 +21,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
 import java.awt.Dimension
+import java.awt.FileDialog
+import java.awt.Frame
 import java.awt.GraphicsEnvironment
 import java.awt.Point
 import java.awt.MenuItem
@@ -32,6 +34,9 @@ import java.awt.event.MouseEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.image.BufferedImage
+import java.io.FilenameFilter
+import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.Timer
 import javax.swing.WindowConstants
@@ -80,7 +85,7 @@ private fun app(
         val model =
             remember {
                 val graph = sloth(model(client), home.pile, hungry, diarist = model(client, think = false), about = home::about)
-                SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather)
+                SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather, updater = Updater(client))
             }
         var shown by remember { mutableStateOf(true) }
         // When the window hid because the person pressed the tray icon, that click must not show it again.
@@ -155,7 +160,7 @@ private fun app(
                                 override fun windowLostFocus(e: WindowEvent) {
                                     // A click inside can take the focus away for a moment: hide only if it stays away.
                                     Timer(250) {
-                                        if (!isFocused) {
+                                        if (!isFocused && !choosing.get()) {
                                             hidden.set(System.currentTimeMillis())
                                             shown = false
                                         }
@@ -233,6 +238,53 @@ private fun notify(
         LINUX &&
             runCatching { ProcessBuilder("notify-send", "--app-name=Peresós", title, text).start() }.isSuccess
     if (!sent) icon?.displayMessage(title, text, TrayIcon.MessageType.INFO)
+}
+
+/** The person chooses files in a dialog of the window, which takes the focus: the window stays meanwhile. */
+private val choosing = AtomicBoolean(false)
+
+/** Asks the person for photos, PDFs or text files to feed, in the dialog of the system. */
+internal fun chooseFiles(): List<Path> {
+    choosing.set(true)
+    try {
+        val dialog =
+            FileDialog(null as Frame?, "Feed Peresós", FileDialog.LOAD).apply {
+                isMultipleMode = true
+                filenameFilter = FilenameFilter { _, name -> Food.of(Path.of(name)) != null }
+                // Windows ignores the filter, and takes a pattern instead.
+                if (System.getProperty("os.name").startsWith("Windows")) file = "*.jpg;*.jpeg;*.png;*.gif;*.webp;*.pdf;*.txt;*.md"
+                isVisible = true // waits until the person chose
+            }
+        return dialog.files.map { it.toPath() }
+    } finally {
+        choosing.set(false)
+    }
+}
+
+/**
+ * Tells the desktop [text], without a window: for a file fed from the menu of the file manager,
+ * which has no terminal to print to. On Windows the tray shows it, from an icon that goes after.
+ */
+internal fun notifyDesktop(
+    title: String,
+    text: String,
+) {
+    if (GraphicsEnvironment.isHeadless()) return
+    when {
+        LINUX -> notify(null, title, text)
+        System.getProperty("os.name").startsWith("Mac") -> {
+            fun quoted(it: String) = "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+            runCatching { ProcessBuilder("osascript", "-e", "display notification ${quoted(text)} with title ${quoted(title)}").start().waitFor() }
+        }
+        SystemTray.isSupported() -> {
+            val icon = TrayIcon(trayImage(null), "Peresós")
+            SystemTray.getSystemTray().add(icon)
+            icon.displayMessage(title, text, TrayIcon.MessageType.INFO)
+            // The message goes with its icon: it stays a few seconds, as long as people read it.
+            Thread.sleep(6_000)
+            SystemTray.getSystemTray().remove(icon)
+        }
+    }
 }
 
 /**

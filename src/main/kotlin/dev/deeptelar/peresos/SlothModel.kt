@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import dev.deeptelar.telar.CompiledGraph
 import dev.deeptelar.telar.GraphSession
 import dev.deeptelar.telar.GraphSnapshot
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +16,7 @@ import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.io.IOException
 import java.net.URI
+import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -28,8 +30,9 @@ import kotlin.time.Duration.Companion.seconds
  * @param today the day, as `2026-10-23`.
  * @param meteo asks for the weather of the person's town, if they chose one. `null` never asks.
  * @param season and [weather] show this season or weather instead of the real one, to try them.
- * @param installed how it was installed, for Uninstall on the About page, which it lacks when this
- *   is `null`: run from its source, or from a place it does not know.
+ * @param installed how it was installed, for Uninstall and Update on the About page, which it lacks
+ *   when this is `null`: run from its source, or from a place it does not know.
+ * @param updater asks GitHub for a newer version and installs it, when the person asks. `null` never asks.
  */
 internal class SlothModel(
     private val home: Home,
@@ -41,6 +44,7 @@ internal class SlothModel(
     season: Season? = null,
     weather: Weather? = null,
     val installed: Installed? = installed()?.takeIf { it != Installed.Source },
+    private val updater: Updater? = null,
 ) {
     val session: GraphSession<Sloth> = GraphSession(graph, home.config, scope)
 
@@ -189,6 +193,64 @@ internal class SlothModel(
         }
     }
 
+    /** What the window knows of a newer version, once the person asked; `null` before. */
+    var update: Update? by mutableStateOf(null)
+        private set
+
+    /** Whether it can update itself: it knows how it was installed, and may ask GitHub. */
+    val canUpdate: Boolean get() = installed != null && updater != null
+
+    /** Asks GitHub whether there is a newer version than this one. */
+    fun checkUpdate() {
+        val updater = updater ?: return
+        update = Update.Checking
+        scope.launch {
+            update =
+                try {
+                    val latest = updater.latest()
+                    when {
+                        latest == null -> Update.Available("A build to try, from ${updater.from}.")
+                        isNewer(latest, updater.current) -> Update.Available("Peresós $latest is out.")
+                        else -> Update.Latest
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Update.Failed("Could not ask GitHub: ${e.message}")
+                }
+        }
+    }
+
+    /**
+     * Installs the newer version, then opens the window again: on Windows, PowerShell does both once
+     * [onQuit] has quit this one; elsewhere a new window opens as this one quits.
+     */
+    fun installUpdate(onQuit: () -> Unit) {
+        val updater = updater ?: return
+        val installed = installed ?: return
+        update = Update.Installing
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { updater.update(installed, terminal = false) }
+                if (installed !is Installed.Windows) reopen()
+                onQuit()
+            } catch (e: IOException) {
+                home.log.error("Update", e)
+                update = Update.Failed(e.message.orEmpty())
+            }
+        }
+    }
+
+    /** Starts a new window from the launcher, which now runs the new version, a moment after this one quits. */
+    private fun reopen() {
+        val launcher = System.getProperty("jpackage.app-path") ?: return
+        ProcessBuilder("sh", "-c", "sleep 2; exec \"\$0\" window", launcher)
+            .fresh()
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+    }
+
     /** It already ate today, and one item a day is plenty. */
     fun ateToday(sloth: Sloth?): Boolean = !hungry && sloth?.lastMeal == day
 
@@ -220,6 +282,24 @@ internal class SlothModel(
     fun feed(item: String) {
         if (item.isBlank()) return
         home.pile.add(item)
+        pile = home.pile.items()
+    }
+
+    /** Why the last file could not be fed: Peresós does not eat its kind. */
+    var feedTrouble: String? by mutableStateOf(null)
+        private set
+
+    /** Puts photos, PDFs or text files on the pile, one item each. */
+    fun feedFiles(files: List<Path>) {
+        feedTrouble =
+            files.firstNotNullOfOrNull { file ->
+                try {
+                    home.pile.addFile(file)
+                    null
+                } catch (e: IllegalArgumentException) {
+                    e.message
+                }
+            }
         pile = home.pile.items()
     }
 
@@ -267,3 +347,18 @@ internal class SlothModel(
 
 /** Where the README of Peresós is, for the About page of the window. */
 internal const val GUIDE = "https://github.com/deeptelar/peresos#readme"
+
+/** Where Update on the About page is. */
+internal sealed interface Update {
+    data object Checking : Update
+
+    data object Latest : Update
+
+    /** A newer version is out, and [news] says which. */
+    data class Available(val news: String) : Update
+
+    data object Installing : Update
+
+    /** It could not check or update: [message] says why, and what to do instead. */
+    data class Failed(val message: String) : Update
+}

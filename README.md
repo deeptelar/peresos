@@ -17,6 +17,11 @@ keep postponing, the note you never sorted. Once a day you wake it. It takes the
 - a **note**, cleaned up,
 - or for a **task**, the first step, which takes five minutes at most.
 
+It eats files too: the photo of a bill, a letter as a PDF, a text file. Gemma looks at the photo
+itself. A PDF is read on your computer, since Ollama takes no PDFs: Gemma gets its text, or, for a
+scan, pictures of its first pages. Feed one with `peresos feed bill.jpg`, from the Pile page of the
+window, or with a right click on the file: **Feed to Peresós**.
+
 Then it waits for you:
 
 - **`y`**: take it. The finished version is saved in `~/.peresos/done`, and the item leaves the pile.
@@ -58,13 +63,27 @@ irm https://raw.githubusercontent.com/deeptelar/peresos/main/install.ps1 | iex
 ```
 
 On Debian and Ubuntu it installs the `.deb` of the [latest release](https://github.com/deeptelar/peresos/releases/latest)
-with apt; elsewhere it installs in your home, without sudo. You also need
+with apt; elsewhere it installs in your home, without sudo. It also adds **Feed to Peresós** to the
+right-click menu of files: under Scripts in Nautilus (GNOME) and Caja, in the menu itself in Nemo
+and Dolphin, and in the Explorer of Windows (under Show more options on Windows 11). You also need
 [Ollama](https://ollama.com/download). Then:
 
 ```bash
 peresos doctor          # checks Ollama, Gemma, its folder, the desktop, and the command
 peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missing
 ```
+
+### Update
+
+```bash
+peresos update
+```
+
+Or Check for updates on the About page of its window. It asks GitHub for the latest release, and if
+there is a newer one and you say yes, installs it the way Peresós was installed. Your pile stays. In
+a terminal on Windows it tells you to run the PowerShell line again, since a running `peresos.exe`
+cannot replace itself; the window can. Versions before 1.0.3 have no `peresos update`: run the
+install line once more to get it.
 
 ### Uninstall
 
@@ -73,8 +92,8 @@ peresos uninstall
 ```
 
 Or Uninstall on the About page of its window. It removes Peresós the way it was installed: with apt
-on Debian and Ubuntu (it asks for your password), or the folders, the command and the menu entry
-that the installer put in your home. It asks before it deletes your pile, its diary and what it
+on Debian and Ubuntu (it asks for your password), or the folders, the command and the menu entries
+that the installer put in your home, Feed to Peresós included. It asks before it deletes your pile, its diary and what it
 finished, in `~/.peresos`. Ollama and Gemma stay, since other apps may use them:
 `ollama rm gemma4:12b` frees Gemma's 8 GB.
 
@@ -98,6 +117,7 @@ the [Package workflow](.github/workflows/package.yml) builds them on Linux, macO
 peresos about "I work from home on Tuesdays and Thursdays"   # once: facts it uses when it prepares things
 peresos feed "the message, decision or note you keep avoiding"
 pbpaste | peresos feed                                      # or pipe it in (xclip -o on Linux)
+peresos feed ~/Downloads/water-bill.jpg                      # or a photo, a PDF or a text file
 peresos                                                      # wake it: it eats the oldest item
 peresos --lazy                                               # or the easiest one, done the laziest way
 peresos pile                                                 # what is still on the pile
@@ -108,12 +128,15 @@ peresos place "Girona"                                       # optional: that to
 ```
 
 The pile is a plain text file, `~/.peresos/pile.md`, with items separated by a line with `---`.
-Edit it by hand whenever you like. `PERESOS_MODEL` picks another Ollama model and `PERESOS_HOME`
+Edit it by hand whenever you like. A photo or a PDF you feed is copied into `~/.peresos/files`, and
+its item is a Markdown link to the copy; the copy goes when the item leaves the pile, into `done`
+next to the finished version if you took it. `PERESOS_MODEL` picks another Ollama model and `PERESOS_HOME`
 another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
 
 **Nothing leaves your computer.** Your messages, your facts and its diary stay in `~/.peresos`, and
-the model runs in your local Ollama. The one exception is opt-in: if you give the window a town for
-its weather, that town goes to [Open-Meteo](https://open-meteo.com), and nothing else. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
+the model runs in your local Ollama, which also reads your photos and PDFs. Two things go out, and
+only when you ask: if you give the window a town for its weather, that town goes to
+[Open-Meteo](https://open-meteo.com); and `peresos update` asks GitHub for the latest version. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
 slow, but you were going to wait a day anyway.
 
 ### When something goes wrong
