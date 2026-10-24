@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.io.IOException
 import java.net.URI
+import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -280,6 +281,24 @@ internal class SlothModel(
     fun feed(item: String) {
         if (item.isBlank()) return
         home.pile.add(item)
+        pile = home.pile.items()
+    }
+
+    /** Why the last file could not be fed: Peresós does not eat its kind. */
+    var feedTrouble: String? by mutableStateOf(null)
+        private set
+
+    /** Puts photos, PDFs or text files on the pile, one item each. */
+    fun feedFiles(files: List<Path>) {
+        feedTrouble =
+            files.firstNotNullOfOrNull { file ->
+                try {
+                    home.pile.addFile(file)
+                    null
+                } catch (e: IllegalArgumentException) {
+                    e.message
+                }
+            }
         pile = home.pile.items()
     }
 

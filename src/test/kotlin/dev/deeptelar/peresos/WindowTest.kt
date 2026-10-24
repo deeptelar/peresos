@@ -242,6 +242,27 @@ class WindowTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
+    fun `the pile page feeds a photo the person chose`() {
+        val photo = Files.createTempDirectory("peresos-photos").resolve("receipt.png")
+        ImageIO.write(java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", photo.toFile())
+        val model = model()
+        model.settle()
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model, chooseFiles = { listOf(photo, photo.resolveSibling("song.mp3")) }) } }
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("Pile 0").performClick()
+            waitForIdle()
+            onNodeWithText("Or feed a photo, a PDF or a text file").performClick()
+            waitForIdle()
+            onNodeWithText("Photo: receipt.png").assertExists()
+            onNodeWithText("Peresós eats photos", substring = true).assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("pile-photo.png").toFile())
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
     fun `the about page asks GitHub for a newer version, when told`() {
         val github = HttpClient(MockEngine { respond("""{"tag_name":"v9.0.0"}""") })
         val model = model(installed = Installed.Apt, updater = Updater(github, from = null, current = "1.0.2"))

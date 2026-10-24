@@ -6,7 +6,7 @@ plugins {
     application
 }
 
-val telar = "0.1.0-alpha13"
+val telar = "0.1.0-alpha14"
 
 version = "1.0.2"
 
@@ -17,6 +17,8 @@ dependencies {
     implementation("dev.deeptelar:telar-serialization:$telar")
     implementation("dev.deeptelar:telar-checkpoint-file:$telar")
     implementation("io.ktor:ktor-client-cio:3.6.0")
+    // The text of a PDF fed to the pile, or pictures of its pages: Ollama takes no PDFs.
+    implementation("org.apache.pdfbox:pdfbox:3.0.8")
     // The window, `peresos window`: Compose for the desktop this is built on.
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)

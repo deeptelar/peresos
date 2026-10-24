@@ -14,8 +14,10 @@ import java.awt.Desktop
 import java.io.IOException
 import java.net.ConnectException
 import java.net.URI
+import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.io.path.exists
+import kotlin.io.path.isRegularFile
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -260,13 +262,56 @@ private suspend fun showPortrait(
     say(Portrait.caption(roundness, grew, onTop))
 }
 
-private fun feed(pile: Pile, words: List<String>) {
+/**
+ * `peresos feed`: puts what is typed or piped on the pile, or the files it is given, one item each.
+ * With `--notify`, as from the menu of the file manager, the desktop says what happened.
+ */
+private fun feed(
+    pile: FilePile,
+    args: List<String>,
+) {
+    val notify = "--notify" in args
+    val words = args - "--notify"
+    val paths = words.map { runCatching { Path.of(it) }.getOrNull() }
+    if (paths.isNotEmpty() && paths.all { it?.isRegularFile() == true }) return feedFiles(pile, paths.filterNotNull(), notify)
+    // Names of files it eats, such as a mistyped photo.jpg, are not an item to do.
+    if (paths.isNotEmpty() && paths.all { it != null && Food.of(it) != null }) {
+        val missing = paths.first { it?.isRegularFile() != true }
+        return say("There is no file at $missing.").also { if (notify) notifyDesktop("Peresós cannot eat that", "There is no file at $missing.") }
+    }
     val item = words.joinToString(" ").ifBlank { generateSequence(::readLine).joinToString("\n") }
     if (item.isBlank()) return println(USAGE)
     pile.add(item)
-    val size = pile.items().size
-    say("Peresós looks at the pile: $size ${if (size == 1) "item" else "items"}. It will get to it. Eventually.")
+    say("Peresós looks at the pile: ${items(pile.items().size)}. It will get to it. Eventually.")
 }
+
+private fun feedFiles(
+    pile: FilePile,
+    files: List<Path>,
+    notify: Boolean,
+) {
+    val failed =
+        files.mapNotNull { file ->
+            try {
+                pile.addFile(file)
+                null
+            } catch (e: IllegalArgumentException) {
+                e.message
+            }
+        }
+    val fed = files.size - failed.size
+    val news =
+        when {
+            fed == 0 -> null
+            files.size == 1 -> "Peresós put ${files.single().fileName} on the pile: ${items(pile.items().size)}."
+            else -> "Peresós put $fed files on the pile: ${items(pile.items().size)}."
+        }
+    news?.let(::say)
+    failed.forEach(::say)
+    if (notify) notifyDesktop(if (fed == 0) "Peresós cannot eat that" else "Peresós has more to eat", listOfNotNull(news, failed.firstOrNull()).joinToString(" "))
+}
+
+private fun items(count: Int) = "$count ${if (count == 1) "item" else "items"}"
 
 private fun about(words: List<String>) {
     home.learn(words.joinToString(" "))
@@ -300,7 +345,7 @@ private suspend fun wear(
 private fun showPile(pile: Pile) {
     val items = pile.items()
     if (items.isEmpty()) return say("The pile is empty.")
-    items.forEachIndexed { index, item -> println("  ${index + 1}. ${item.lines().first().take(70)}") }
+    items.forEachIndexed { index, item -> println("  ${index + 1}. ${shown(item).lines().first().take(70)}") }
 }
 
 private suspend fun showDiary(sloth: Sloth?) {
@@ -349,6 +394,7 @@ private val USAGE =
     Peresós eats one item of your backlog a day, and you only say yes or no.
 
       peresos feed "text"     put something you avoid on the pile (or pipe text into it)
+      peresos feed photo.jpg  or a photo, a PDF or a text file: Gemma reads it on this computer
       peresos about "fact"    tell it something about you that helps, like when you are home
       peresos                 wake it: it eats the oldest item and shows you the finished version
       peresos --lazy          it picks the easiest item instead, and does it the laziest way

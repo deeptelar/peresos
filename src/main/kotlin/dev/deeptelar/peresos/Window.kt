@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import dev.deeptelar.telar.GraphSnapshot
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.nio.file.Path
 import java.time.LocalTime
 
 /** The pages of the window, in its menu. Now is the one it opens on, and the others go back to it. */
@@ -50,12 +51,14 @@ internal val HABITAT_HEIGHT = 144.dp
  *
  * @param header the bar to drag the window by, when it has no frame of its own.
  * @param onQuit quits the app, from the menu.
+ * @param chooseFiles asks the person for files to feed.
  */
 @Composable
 internal fun SlothScreen(
     model: SlothModel,
     night: Boolean = LocalTime.now().hour !in 7..19,
     onQuit: (() -> Unit)? = null,
+    chooseFiles: () -> List<Path> = ::chooseFiles,
     header: @Composable () -> Unit = {},
 ) {
     val snapshot by model.session.snapshot.collectAsState()
@@ -101,7 +104,7 @@ internal fun SlothScreen(
                 }
                 when (page) {
                     Page.NOW -> Now(model, snapshot, tick)
-                    Page.PILE -> Pile(model)
+                    Page.PILE -> Pile(model, chooseFiles)
                     Page.DIARY -> Diary(sloth)
                     Page.WEAR -> Wardrobe(model)
                     Page.YOU -> You(model)
@@ -284,14 +287,19 @@ private fun LastWake(
 }
 
 @Composable
-private fun Pile(model: SlothModel) {
+private fun Pile(
+    model: SlothModel,
+    choose: () -> List<Path>,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Asking("Something you keep putting off", "Feed it", model::feed)
+        PixelLink("Or feed a photo, a PDF or a text file") { model.feedFiles(choose()) }
+        model.feedTrouble?.let { Hint(it) }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
-                    PixelText(item.lines().first(), size = BODY, maxLines = 2)
+                    PixelText(shown(item).lines().first(), size = BODY, maxLines = 2)
                 }
             }
         }

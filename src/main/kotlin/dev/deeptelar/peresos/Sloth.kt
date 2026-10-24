@@ -176,7 +176,11 @@ fun sloth(
         val chew =
             node(
                 "chew",
-                work = { sloth -> model.ask<Bite>(chewPrompt(sloth, about()), system = if (sloth.lazy) CHEF + LAZY else CHEF) },
+                work = { sloth ->
+                    // The photos and PDFs of the item are read from the pile here, never kept in the checkpoint.
+                    val plate = pile.serve(checkNotNull(sloth.item))
+                    model.ask<Bite>(chewPrompt(sloth, plate.text, about()), system = if (sloth.lazy) CHEF + LAZY else CHEF, attachments = plate.attachments)
+                },
                 retry = Retry(attempts = 2),
             ) { sloth, bite -> sloth.copy(bite = bite) }
 
@@ -191,7 +195,7 @@ fun sloth(
                 effect("swallow") {
                     when (answer) {
                         Answer.YES -> {
-                            pile.keep(sloth.today, bite)
+                            pile.keep(sloth.today, item, bite)
                             pile.remove(item)
                         }
                         Answer.NO -> pile.remove(item)
@@ -227,7 +231,7 @@ fun sloth(
         diary then NodeRef.END
     }.compile()
 
-private fun chewPrompt(sloth: Sloth, about: String): String {
+private fun chewPrompt(sloth: Sloth, item: String, about: String): String {
     val tried =
         if (sloth.tries.isEmpty()) {
             ""
@@ -235,12 +239,12 @@ private fun chewPrompt(sloth: Sloth, about: String): String {
             "\n\nI did not want these versions, so make a different one:\n" + sloth.tries.joinToString("\n") { "- ${it.replace("\n", " ")}" }
         }
     val me = if (about.isBlank()) "" else "What you know about me:\n${about.trim()}\n\n"
-    return "${me}Here is an item of my backlog. Make it done for me.\n\n${sloth.item}$tried"
+    return "${me}Here is an item of my backlog. Make it done for me.\n\n$item$tried"
 }
 
 private fun pickPrompt(items: List<String>): String =
     "Here is my backlog. Which item is the easiest to get off it, with the least effort? Reply with its number and why.\n\n" +
-        items.mapIndexed { index, item -> "${index + 1}. ${item.replace("\n", " ").take(300)}" }.joinToString("\n")
+        items.mapIndexed { index, item -> "${index + 1}. ${shown(item).replace("\n", " ").take(300)}" }.joinToString("\n")
 
 private fun diaryPrompt(sloth: Sloth): String {
     val meal = sloth.meals.last()
