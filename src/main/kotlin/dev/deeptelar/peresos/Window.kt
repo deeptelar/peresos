@@ -105,7 +105,7 @@ internal fun SlothScreen(
                     Page.DIARY -> Diary(sloth)
                     Page.WEAR -> Wardrobe(model)
                     Page.YOU -> You(model)
-                    Page.ABOUT -> About(model)
+                    Page.ABOUT -> About(model, onQuit)
                 }
             }
             if (menu) {
@@ -335,9 +335,16 @@ private fun You(model: SlothModel) {
     }
 }
 
-/** What Peresós is, in two sentences, and the way to its README for the rest. */
+/** What Peresós is, in two sentences, the way to its README for the rest, and the way out. */
 @Composable
-private fun About(model: SlothModel) {
+private fun ColumnScope.About(
+    model: SlothModel,
+    onQuit: (() -> Unit)?,
+) {
+    var asking by remember { mutableStateOf(false) }
+    val installed = model.installed
+    // The question takes the whole page, so that its buttons are in sight.
+    if (installed != null && (asking || model.gone)) return Leave(model, installed, onQuit) { asking = false }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Title("Peresós")
@@ -346,6 +353,31 @@ private fun About(model: SlothModel) {
         PixelText("Feed it what you keep putting off. Once a day, Gemma prepares one item on this computer, and you say take it, bin it or later.", size = BODY)
         model.openGuide?.let { PixelButton("How it works", Ink.blue, it, small = true) }
         SelectionContainer { PixelText(GUIDE.substringBefore("#").removePrefix("https://"), size = SMALL, color = Ink.faint) }
+        if (installed != null) PixelLink("Uninstall") { asking = true }
+    }
+}
+
+/** Uninstall: what goes, which scrolls, whether the pile goes too, and the buttons, which stay in sight. Then the goodbye. */
+@Composable
+private fun ColumnScope.Leave(
+    model: SlothModel,
+    installed: Installed,
+    onQuit: (() -> Unit)?,
+    onCancel: () -> Unit,
+) {
+    if (model.gone) return Title(if (installed is Installed.Windows) "Bye! It leaves as it quits." else "Gone. Bye!")
+    var forget by remember { mutableStateOf(false) }
+    Title("Uninstall?")
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Line("It removes:")
+        SelectionContainer { Column { installed.shown.forEach { Hint(it) } } }
+        Hint("Ollama and Gemma stay. So do your pile, its diary and what it finished, in ${model.homeShown}, unless it forgets them.")
+    }
+    PixelCheck(forget, "Forget my pile too") { forget = !forget }
+    model.stayTrouble?.let { SelectionContainer { PixelText(it, size = SMALL, color = Ink.red) } }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        PixelButton("Uninstall", Ink.red, { model.uninstall(forget) { onQuit?.invoke() } }, enabled = !model.leaving, small = true)
+        PixelLink("Cancel", enabled = !model.leaving, onClick = onCancel)
     }
 }
 
