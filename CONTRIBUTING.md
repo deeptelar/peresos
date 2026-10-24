@@ -66,14 +66,15 @@ does all of this on Linux, macOS and Windows for every pull request.
 |---|---|
 | [`Sloth.kt`](src/main/kotlin/dev/deeptelar/peresos/Sloth.kt) | The state and the graph of Telar: wake, pick, chew, swallow, diary |
 | [`Main.kt`](src/main/kotlin/dev/deeptelar/peresos/Main.kt) | The `peresos` command and its subcommands |
-| [`Home.kt`](src/main/kotlin/dev/deeptelar/peresos/Home.kt), [`Pile.kt`](src/main/kotlin/dev/deeptelar/peresos/Pile.kt) | `~/.peresos`: the pile, the checkpoints, the facts, the locks; and the model in Ollama |
+| [`Home.kt`](src/main/kotlin/dev/deeptelar/peresos/Home.kt), [`Pile.kt`](src/main/kotlin/dev/deeptelar/peresos/Pile.kt) | `~/.peresos`: the pile and the files fed to it, the checkpoints, the facts, the locks; and the model in Ollama |
 | [`Doctor.kt`](src/main/kotlin/dev/deeptelar/peresos/Doctor.kt), [`Log.kt`](src/main/kotlin/dev/deeptelar/peresos/Log.kt) | `peresos doctor` and its report, and the log of failures |
 | [`Portrait.kt`](src/main/kotlin/dev/deeptelar/peresos/Portrait.kt), [`Wardrobe.kt`](src/main/kotlin/dev/deeptelar/peresos/Wardrobe.kt), [`Canvas.kt`](src/main/kotlin/dev/deeptelar/peresos/Canvas.kt) | The pixel art of the sloth, what it wears, and the canvas both are drawn on |
 | [`Tray.kt`](src/main/kotlin/dev/deeptelar/peresos/Tray.kt), [`Window.kt`](src/main/kotlin/dev/deeptelar/peresos/Window.kt), [`SlothModel.kt`](src/main/kotlin/dev/deeptelar/peresos/SlothModel.kt) | The tray icon, the window and its pages, and what its buttons do |
 | [`Habitat.kt`](src/main/kotlin/dev/deeptelar/peresos/Habitat.kt), [`Weather.kt`](src/main/kotlin/dev/deeptelar/peresos/Weather.kt), [`Poke.kt`](src/main/kotlin/dev/deeptelar/peresos/Poke.kt) | The scene around it, the season and the weather of Open-Meteo, and what it says when touched |
 | [`PixelUi.kt`](src/main/kotlin/dev/deeptelar/peresos/PixelUi.kt) | The pixel-art buttons and fields of the window |
 | `packaging/`, `install.sh`, `install.ps1` | The packages and their installers |
-| [`Uninstall.kt`](src/main/kotlin/dev/deeptelar/peresos/Uninstall.kt) | `peresos uninstall` and Uninstall in the window: how it was installed, and what goes |
+| [`Uninstall.kt`](src/main/kotlin/dev/deeptelar/peresos/Uninstall.kt), [`Update.kt`](src/main/kotlin/dev/deeptelar/peresos/Update.kt) | `peresos uninstall` and `peresos update`, also in the window: how it was installed, what goes, and the installer that runs again |
+| [`Pdf.kt`](src/main/kotlin/dev/deeptelar/peresos/Pdf.kt) | The text of a PDF fed to the pile, or pictures of its pages, read with PDFBox |
 
 ## What Peresós keeps
 
