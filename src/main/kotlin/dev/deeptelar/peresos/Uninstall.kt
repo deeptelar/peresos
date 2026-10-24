@@ -132,8 +132,8 @@ internal fun uninstall(
 }
 
 /**
- * The PowerShell that removes Peresós from Windows once the process [pid] quits: [folder], its
- * shortcut in the Start menu, its line in the PATH of the person, and [home] when it is given.
+ * The PowerShell that removes Peresós from Windows once the process [pid] quits: its shortcut in
+ * the Start menu, its line in the PATH of the person, [home] when it is given, and [folder] last.
  */
 internal fun windowsScript(
     folder: Path,
@@ -145,11 +145,12 @@ internal fun windowsScript(
         appendLine("\$ErrorActionPreference = 'SilentlyContinue'")
         appendLine("Wait-Process -Id $pid -Timeout 60")
         appendLine("\$dir = ${quoted(folder)}")
-        // The files of a program that just quit can stay locked for a moment.
-        appendLine("for (\$i = 0; \$i -lt 10 -and (Test-Path -LiteralPath \$dir); \$i++) { Remove-Item -LiteralPath \$dir -Recurse -Force; if (Test-Path -LiteralPath \$dir) { Start-Sleep 1 } }")
         appendLine("Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) \"Peres\$([char]0xF3)s.lnk\") -Force")
         appendLine("\$path = [Environment]::GetEnvironmentVariable('Path', 'User')")
         appendLine("if (\$path) { [Environment]::SetEnvironmentVariable('Path', ((\$path -split ';') | Where-Object { \$_ -and \$_.TrimEnd('\\') -ne \$dir }) -join ';', 'User') }")
         if (home != null) appendLine("Remove-Item -LiteralPath ${quoted(home)} -Recurse -Force")
+        // The folder last, so that once it is gone everything is. The files of a program that just
+        // quit can stay locked for a moment.
+        appendLine("for (\$i = 0; \$i -lt 10 -and (Test-Path -LiteralPath \$dir); \$i++) { Remove-Item -LiteralPath \$dir -Recurse -Force; if (Test-Path -LiteralPath \$dir) { Start-Sleep 1 } }")
     }
 }

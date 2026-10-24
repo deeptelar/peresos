@@ -100,6 +100,7 @@ class UninstallTest {
         assertContains(script, "\$dir = '/c/Users/o''brien/Programs/Peresos'")
         assertContains(script, "Peres\$([char]0xF3)s.lnk")
         assertContains(script, "SetEnvironmentVariable('Path'")
+        assertTrue(script.trim().lines().last().startsWith("for "), "the folder goes last, so a gone folder means it is all gone")
         assertFalse("o''brien/.peresos" in script)
         assertContains(windowsScript(Path.of("/c/Peresos"), home = Path.of("/c/Users/ana/.peresos"), pid = 1), "Remove-Item -LiteralPath '/c/Users/ana/.peresos' -Recurse -Force")
     }
