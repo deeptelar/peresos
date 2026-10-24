@@ -41,7 +41,7 @@ internal sealed interface Installed {
     data class Windows(
         val folder: Path,
     ) : Installed {
-        override val shown = listOf(folder.toString(), "its shortcut in the Start menu", "its folder in your PATH", "Feed to Peresós in the menu of files")
+        override val shown = listOf(folder.toString(), "its shortcuts in the Start menu and on the desktop, and its start at login", "its folder in your PATH", "Feed to Peresós in the menu of files")
     }
 
     /** Run with Gradle from its source: nothing is installed. */
@@ -58,23 +58,38 @@ internal fun installed(
     launcher: String? = System.getProperty("jpackage.app-path"),
     os: String = System.getProperty("os.name"),
     userHome: Path = Path.of(System.getProperty("user.home")),
+    desktop: Path = desktopFolder(os, userHome),
 ): Installed? {
     // Where it really is, when it was started from a link like ~/.local/bin/peresos.
     val path = Path.of(launcher ?: return Installed.Source).let { runCatching { it.toRealPath() }.getOrDefault(it.toAbsolutePath().normalize()) }
+    // Its icon on the desktop, and its start at login, when they open this Peresós.
+    val openers = Launchers(path, os, userHome, desktop).let { launchers -> Opener.entries.map(launchers::file).filter { opens(it, path) } }
     return when {
         // peresos.exe and peresos-window.exe are at the top of its folder.
         os.startsWith("Windows") -> path.parent?.takeIf { it.named("peresos") }?.let { Installed.Windows(it) }
         // Peresos.app/Contents/MacOS/Peresos
-        os.startsWith("Mac") -> path.parent?.parent?.parent?.takeIf { it.named("Peresos.app") }?.let { app -> Installed.Files(listOf(app) + linkTo(app, userHome)) }
-        path.startsWith("/opt/peresos") -> Installed.Apt(menus(userHome))
+        os.startsWith("Mac") -> path.parent?.parent?.parent?.takeIf { it.named("Peresos.app") }?.let { app -> Installed.Files(listOf(app) + linkTo(app, userHome) + openers) }
+        path.startsWith("/opt/peresos") -> Installed.Apt(menus(userHome) + openers)
         // peresos/bin/peresos, with a menu entry that opens it.
         else ->
             path.parent?.parent?.takeIf { it.named("peresos") }?.let { app ->
                 val entry = userHome.resolve(".local/share/applications/peresos.desktop").takeIf { it.exists() && "$app/" in it.readText() }
-                Installed.Files(listOf(app) + linkTo(app, userHome) + listOfNotNull(entry) + menus(userHome))
+                Installed.Files(listOf(app) + linkTo(app, userHome) + listOfNotNull(entry) + menus(userHome) + openers)
             }
     }
 }
+
+/** Whether [file], an icon on the desktop or a start at login, opens the Peresós at [launcher]. */
+private fun opens(
+    file: Path,
+    launcher: Path,
+): Boolean =
+    when {
+        // The link to Peresos.app on the desktop of a Mac.
+        file.isSymbolicLink() -> launcher.startsWith(file.parent.resolve(file.readSymbolicLink()).normalize())
+        file.exists() -> launcher.toString() in file.readText()
+        else -> false
+    }
 
 /** Feed to Peresós in the menus of the file managers of Linux, as install.sh writes them, where they are. */
 internal fun menus(userHome: Path): List<Path> =
@@ -160,6 +175,10 @@ internal fun windowsScript(
         // Cmdlets wherever they do, for a PC whose PowerShell runs in Constrained Language Mode, without .NET.
         appendLine("\$full = \$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'")
         appendLine("Remove-Item -LiteralPath \"\$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Peres\$([char]0xF3)s.lnk\" -Force")
+        // Its icon on the desktop, wherever Explorer keeps the desktop, and its start at login.
+        appendLine("\$desktop = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders').Desktop")
+        appendLine("Remove-Item -LiteralPath \"\$desktop\\Peres\$([char]0xF3)s.lnk\" -Force")
+        appendLine("Remove-Item -LiteralPath \"\$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Peres\$([char]0xF3)s.lnk\" -Force")
         // Feed to Peresós, in the menu of files in the Explorer.
         appendLine("foreach (\$type in 'image', '.pdf', 'text') { Remove-Item -LiteralPath \"HKCU:\\Software\\Classes\\SystemFileAssociations\\\$type\\shell\\Peresos\" -Recurse -Force }")
         appendLine("\$path = (Get-ItemProperty -Path 'HKCU:\\Environment' -Name 'Path').Path")

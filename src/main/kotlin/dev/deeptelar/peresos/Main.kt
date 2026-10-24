@@ -11,6 +11,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
 import java.awt.Desktop
+import java.awt.GraphicsEnvironment
+import java.io.File
 import java.io.IOException
 import java.net.ConnectException
 import java.net.URI
@@ -49,10 +51,15 @@ private suspend fun run(args: Array<String>) {
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
         "gemma" -> gemma(args.getOrNull(1))
+        "desktop" -> launcher(Opener.DESKTOP, args.getOrNull(1))
+        "autostart" -> launcher(Opener.LOGIN, args.getOrNull(1))
         "uninstall" -> uninstall()
         "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")
-        "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+        "window" ->
+            if ("--here" in args || !detach(args)) {
+                window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+            }
         // Opened from the Finder, the app of macOS has no terminal: it opens the window.
         null if MAC && System.getenv("TERM") == null && System.console() == null -> window(home)
         null, "--hungry", "--lazy" -> {
@@ -65,6 +72,35 @@ private suspend fun run(args: Array<String>) {
         }
         else -> println(USAGE)
     }
+}
+
+/**
+ * Starts the window as a process of its own, which goes on when the terminal closes, and says so.
+ * `false` when there is no launcher to start, as from the source, or no desktop: then it runs here,
+ * where its errors show.
+ */
+private fun detach(args: Array<String>): Boolean {
+    val launcher = System.getProperty("jpackage.app-path")?.let { Path.of(it) } ?: return false
+    if (GraphicsEnvironment.isHeadless()) return false
+    val windows = System.getProperty("os.name").startsWith("Windows")
+    // On Windows the window's own launcher, which opens no console.
+    val program = (if (windows) launcher.resolveSibling("peresos-window.exe").takeIf { it.exists() } else null) ?: launcher
+    val window = listOf(program.toString()) + args.toList() + "--here"
+    val command =
+        when {
+            windows -> window
+            // Its own session: the terminal's hangup never reaches it.
+            onPath("setsid") != null -> listOf("setsid") + window
+            else -> listOf("nohup") + window
+        }
+    ProcessBuilder(command)
+        .fresh()
+        .redirectInput(ProcessBuilder.Redirect.from(File(if (windows) "NUL" else "/dev/null")))
+        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        .redirectError(ProcessBuilder.Redirect.DISCARD)
+        .start()
+    say("Peresós is in your tray. You can close this terminal.")
+    return true
 }
 
 /** `peresos doctor`: are Ollama and Gemma there, can it write its home, and is there a desktop for the window. */
@@ -155,6 +191,27 @@ private fun gemma(choice: String?) {
             "Peresós works without Gemma: it brings you each item as it is, and you say done, bin it or later. With Ollama: peresos gemma on"
         },
     )
+}
+
+/** `peresos desktop on|off` and `peresos autostart on|off`: an icon on the desktop, and the start at login, into the tray. */
+private fun launcher(
+    opener: Opener,
+    choice: String?,
+) {
+    val launchers = Launchers.here() ?: return say("Peresós runs from its source here: install it to put it on the desktop or start it at login.")
+    val what = if (opener == Opener.DESKTOP) "an icon on your desktop" else "the start at login, into the tray"
+    val command = if (opener == Opener.DESKTOP) "peresos desktop" else "peresos autostart"
+    when (choice) {
+        "on", "off" ->
+            try {
+                launchers.turn(opener, choice == "on")
+            } catch (e: IOException) {
+                return say(e.message.orEmpty())
+            }
+        null -> Unit
+        else -> return say("$command on, or $command off.")
+    }
+    say(if (launchers.isOn(opener)) "Peresós has $what: ${launchers.file(opener)}. To take it away: $command off" else "Peresós has no $what. To add it: $command on")
 }
 
 /** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
@@ -420,10 +477,13 @@ private val USAGE =
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
-      peresos window          open its home in a window, where you can do all of this with buttons
+      peresos window          open its home in a window, where you can do all of this with buttons; the terminal
+                              can close (--here keeps it in the terminal)
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
       peresos gemma off       work without Ollama: it brings each item as it is (peresos gemma on to use Gemma)
+      peresos desktop on      an icon on your desktop that opens its window (off to take it away)
+      peresos autostart on    start it when you sign in, into the tray (off to stop that)
       peresos update          install its latest version, if there is a newer one (it asks GitHub)
       peresos uninstall       remove it from this computer; it asks before it deletes your pile
 

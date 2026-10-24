@@ -381,8 +381,14 @@ private fun Settings(
     onQuit: (() -> Unit)?,
 ) {
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PixelCheck(model.gemma, "Prepare items with Gemma") { model.useGemma(!model.gemma) }
-        Hint(if (model.gemma) "Gemma runs in Ollama, on this computer." else "Without Ollama, it brings each item as it is, and you say done, bin it or later.")
+        PixelCheck(model.gemma, "Use Gemma") { model.useGemma(!model.gemma) }
+        Hint(if (model.gemma) "Gemma prepares each item, in Ollama on this computer." else "Without Ollama, it brings each item as it is, and you say done, bin it or later.")
+        if (model.canLaunch) {
+            PixelText("OPEN IT WITHOUT A TERMINAL", Modifier.padding(top = 8.dp), size = SMALL, color = Ink.faint)
+            PixelCheck(Opener.DESKTOP in model.openers, "An icon on the desktop") { model.turn(Opener.DESKTOP, Opener.DESKTOP !in model.openers) }
+            PixelCheck(Opener.LOGIN in model.openers, "Start when I sign in") { model.turn(Opener.LOGIN, Opener.LOGIN !in model.openers) }
+            model.openerTrouble?.let { SelectionContainer { PixelText(it, size = SMALL, color = Ink.red) } }
+        }
         if (model.canUpdate) {
             PixelText("VERSION $VERSION", Modifier.padding(top = 8.dp), size = SMALL, color = Ink.faint)
             Updating(model, onQuit)

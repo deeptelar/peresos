@@ -33,6 +33,7 @@ import kotlin.time.Duration.Companion.seconds
  * @param installed how it was installed, for Uninstall and Update on the About page, which it lacks
  *   when this is `null`: run from its source, or from a place it does not know.
  * @param updater asks GitHub for a newer version and installs it, when the person asks. `null` never asks.
+ * @param launchers puts it on the desktop or starts it at login; `null` when it runs from its source.
  */
 internal class SlothModel(
     private val home: Home,
@@ -45,6 +46,7 @@ internal class SlothModel(
     weather: Weather? = null,
     val installed: Installed? = installed()?.takeIf { it != Installed.Source },
     private val updater: Updater? = null,
+    private val launchers: Launchers? = Launchers.here(),
 ) {
     val session: GraphSession<Sloth> = GraphSession(graph, home.config, scope)
 
@@ -62,6 +64,32 @@ internal class SlothModel(
     fun useGemma(on: Boolean) {
         home.useGemma(on)
         gemma = on
+    }
+
+    /** Whether it can be put on the desktop or started at login: it was installed. */
+    val canLaunch: Boolean = launchers != null
+
+    /** Where it opens from, besides a terminal: an icon on the desktop, the start at login. */
+    var openers: Set<Opener> by mutableStateOf(Opener.entries.filter { launchers?.isOn(it) == true }.toSet())
+        private set
+
+    /** Why it could not put itself on the desktop or at login. */
+    var openerTrouble: String? by mutableStateOf(null)
+        private set
+
+    fun turn(
+        opener: Opener,
+        on: Boolean,
+    ) {
+        val launchers = launchers ?: return
+        openerTrouble =
+            try {
+                launchers.turn(opener, on)
+                null
+            } catch (e: IOException) {
+                e.message
+            }
+        openers = Opener.entries.filter { launchers.isOn(it) }.toSet()
     }
 
     /** A terminal has it awake, so the window waits. */
@@ -254,7 +282,7 @@ internal class SlothModel(
     /** Starts a new window from the launcher, which now runs the new version, a moment after this one quits. */
     private fun reopen() {
         val launcher = System.getProperty("jpackage.app-path") ?: return
-        ProcessBuilder("sh", "-c", "sleep 2; exec \"\$0\" window", launcher)
+        ProcessBuilder("sh", "-c", "sleep 2; exec \"\$0\" window --here", launcher)
             .fresh()
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
