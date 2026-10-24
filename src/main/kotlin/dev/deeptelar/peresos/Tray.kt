@@ -276,6 +276,18 @@ internal fun trayImage(badge: Int?): BufferedImage {
     return image
 }
 
+/** The face on its tile of bark, each of its pixels [scale] pixels wide: the icon of the app. */
+internal fun faceImage(scale: Int): BufferedImage {
+    val image = BufferedImage(FACE.size * scale, FACE.size * scale, BufferedImage.TYPE_INT_ARGB)
+    FACE.forEachIndexed { y, row ->
+        row.forEachIndexed { x, letter ->
+            val color = FACE_COLORS[letter]?.let { it or 0xFF000000.toInt() } ?: Ink.woodDark.toArgb()
+            for (dy in 0 until scale) for (dx in 0 until scale) image.setRGB(x * scale + dx, y * scale + dy, color)
+        }
+    }
+    return image
+}
+
 /** The top right corner of the screen, under the tray, or the bottom right on Windows, where its tray is. */
 private fun corner(size: Dimension): Point {
     val screen = GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds

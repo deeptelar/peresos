@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Peresós
+GenericName=Backlog sloth
+Comment=A sloth that eats one item of your backlog a day
+Exec=@PERESOS@ window
+Icon=@ICON@
+Terminal=false
+Categories=Utility;
+StartupWMClass=dev-deeptelar-peresos-MainKt
