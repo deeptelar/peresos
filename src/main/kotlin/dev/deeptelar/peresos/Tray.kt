@@ -35,10 +35,11 @@ import java.awt.image.BufferedImage
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.Timer
 import javax.swing.WindowConstants
+import kotlin.math.min
 import kotlin.system.exitProcess
 
-/** About the size of a phone: the window sits in a corner of the screen, under its icon in the tray. */
-internal val WINDOW_SIZE: DpSize = DpSize(400.dp, 800.dp)
+/** A small window in a corner of the screen, under its icon in the tray. A short screen makes it shorter. */
+internal val WINDOW_SIZE: DpSize = DpSize(360.dp, 600.dp)
 
 /**
  * Opens its home, `peresos window`, like JetBrains Toolbox: an icon in the tray, and a small window
@@ -164,7 +165,9 @@ private fun app(
                         )
                     }
                     isResizable = false
-                    size = Dimension(WINDOW_SIZE.width.value.toInt(), WINDOW_SIZE.height.value.toInt())
+                    // In the units of the screen at its scale, like dp: at 150 %, 600 is 900 pixels.
+                    val screen = GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds
+                    size = Dimension(WINDOW_SIZE.width.value.toInt(), min(WINDOW_SIZE.height.value.toInt(), screen.height - 24))
                     location = corner(size)
                     defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
                     addWindowListener(
@@ -184,8 +187,8 @@ private fun app(
                     window.requestFocus()
                 }
             }
-            SlothScreen(model) {
-                if (tray) WindowDraggableArea { TitleBar(onHide = { shown = false }, onQuit = quit) }
+            SlothScreen(model, onQuit = quit) {
+                if (tray) WindowDraggableArea { TitleBar(onHide = { shown = false }) }
             }
         }
     }

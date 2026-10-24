@@ -115,10 +115,11 @@ until you submit the issue yourself.
 ## A home on your desktop
 
 `peresos window` puts the sloth in your tray, like JetBrains Toolbox: a small pixel face in the top
-bar, and under it a window about the size of a phone. At the top is its habitat, a pixel-art jungle
-where it hangs from its branch and plays its animations. Below that are pages for everything the
-terminal does, as buttons: wake it, read what Gemma prepared and take it, bin it, leave it for later
-or ask for another try; feed the pile, read the diary, dress it up.
+bar, and under it a small window that fits the screen. At the top is its habitat, a pixel-art jungle
+where it hangs from its branch and plays its animations. Below it is what the sloth is doing, with
+the buttons for it: wake it, then take what Gemma prepared, bin it or leave it for later (or ask
+for another try, or copy it). The menu (☰) has the rest of what the terminal does: feed the pile,
+read the diary, dress it up, tell it about you, and quit.
 
 ![Peresós in the tray: its face in the top bar with a yellow badge, and the window under it with a lazy bite waiting for an answer](docs/peresos-window.png)
 
@@ -140,7 +141,7 @@ terminal and the window shows the new item a moment later. Only one of them can 
 
 The leaves follow the season, and the sky follows the weather, by day and by night: sun, clouds,
 fog, rain, snow on the branch, or a storm with lightning. Without a town it shows the season only;
-`peresos place "your town"` (or the **You** tab) adds the weather. To try them all:
+`peresos place "your town"` (or **You** in the menu) adds the weather. To try them all:
 `peresos window --season=winter --weather=snow`.
 
 ![The habitat in six weathers: clear, cloudy, fog, rain, snow and storm, across the seasons](docs/peresos-weather.png)

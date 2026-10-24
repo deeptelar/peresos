@@ -1,6 +1,7 @@
 package dev.deeptelar.peresos
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,19 +37,25 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.LocalTime
 
-/** The pages of the window, in the bar at its bottom. */
+/** The pages of the window, in its menu. Now is the one it opens on, and the others go back to it. */
 private enum class Page { NOW, PILE, DIARY, WEAR, YOU }
 
+/** The height of the habitat: the least that draws the sloth with pixels of 3. */
+internal val HABITAT_HEIGHT = 144.dp
+
 /**
- * Everything in the window, in one column about the size of a phone: the habitat at the top, the
- * page below it, and the bar of pages at the bottom.
+ * Everything in the window, in one small column: the habitat at the top, a line on the sloth with
+ * the button of the menu, and the page under it. The menu holds the pages other than Now, so the
+ * window shows what the sloth does, and little else.
  *
  * @param header the bar to drag the window by, when it has no frame of its own.
+ * @param onQuit quits the app, from the menu.
  */
 @Composable
 internal fun SlothScreen(
     model: SlothModel,
     night: Boolean = LocalTime.now().hour !in 7..19,
+    onQuit: (() -> Unit)? = null,
     header: @Composable () -> Unit = {},
 ) {
     val snapshot by model.session.snapshot.collectAsState()
@@ -58,6 +65,7 @@ internal fun SlothScreen(
     val roundness = sloth?.roundness ?: 0
     val frames = remember(roundness, onTop, model.wearing) { Portrait.pictures(roundness, onTop, model.wearing) }
     var page by remember { mutableStateOf(Page.NOW) }
+    var menu by remember { mutableStateOf(false) }
     // The last touch, kept after its reaction ends, to count the touches in a row. The reaction ends
     // with the first tick after it, which draws the screen again.
     var last by remember { mutableStateOf<Reaction?>(null) }
@@ -65,7 +73,7 @@ internal fun SlothScreen(
     val touched = remember(reaction, frames) { reaction?.let { Portrait.touched(roundness, onTop, model.wearing, it.touch, it.fedUp) } }
     Column(Modifier.fillMaxSize().drawBehind { planks() }) {
         header()
-        Box(Modifier.fillMaxWidth().height(170.dp)) {
+        Box(Modifier.fillMaxWidth().height(HABITAT_HEIGHT)) {
             Habitat(frames, onTop, night, model.season, model.weather, tick, Modifier.fillMaxSize(), touched, shake(reaction, tick)) { touch ->
                 val now = System.currentTimeMillis()
                 val count = last?.takeIf { now - it.at < IN_A_ROW_MS }?.count?.plus(1) ?: 1
@@ -76,22 +84,44 @@ internal fun SlothScreen(
             PixelText(outside(model), Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp), size = SMALL, color = Ink.paper)
         }
         val grew = model.ateHere && snapshot is GraphSnapshot.Completed && sloth?.rest == Rest.NONE && Portrait.phase(roundness) != Portrait.phase(roundness - 1)
-        PixelText(Portrait.label(roundness, grew), Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), size = SMALL, color = if (grew) Ink.yellow else Ink.paper)
-        Column(
-            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp).pixelBox(Ink.paper).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            when (page) {
-                Page.NOW -> Now(model, snapshot, tick)
-                Page.PILE -> Pile(model)
-                Page.DIARY -> Diary(sloth)
-                Page.WEAR -> Wardrobe(model)
-                Page.YOU -> About(model)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PixelText(Portrait.label(roundness, grew), Modifier.weight(1f), size = SMALL, color = if (grew) Ink.yellow else Ink.paper)
+            PixelIconButton(MENU_ICON, "Menu", { menu = !menu }, color = if (menu) Ink.paper else Ink.paperDark)
+        }
+        Box(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+            Column(
+                Modifier.fillMaxSize().pixelBox(Ink.paper).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (page != Page.NOW) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PixelText(PAGES.getValue(page).uppercase(), Modifier.weight(1f), size = SMALL, color = Ink.faint)
+                        PixelLink("Back") { page = Page.NOW }
+                    }
+                }
+                when (page) {
+                    Page.NOW -> Now(model, snapshot, tick)
+                    Page.PILE -> Pile(model)
+                    Page.DIARY -> Diary(sloth)
+                    Page.WEAR -> Wardrobe(model)
+                    Page.YOU -> About(model)
+                }
+            }
+            if (menu) {
+                // A click anywhere else closes it.
+                Box(Modifier.fillMaxSize().clickable(interactionSource = null, indication = null) { menu = false })
+                val items = Page.entries.map { if (it == Page.PILE) "Pile ${model.pile.size}" else PAGES.getValue(it) } + listOfNotNull(onQuit?.let { "Quit" })
+                PixelMenu(items, page.ordinal, Modifier.align(Alignment.TopEnd)) { index ->
+                    menu = false
+                    if (index < Page.entries.size) page = Page.entries[index] else onQuit?.invoke()
+                }
             }
         }
-        PixelTabs(listOf("Now", "Pile ${model.pile.size}", "Diary", "Wear", "You"), page.ordinal, Modifier.padding(12.dp)) { page = Page.entries[it] }
     }
 }
+
+/** The name of each page, in the menu and over the page. */
+private val PAGES = mapOf(Page.NOW to "Now", Page.PILE to "Pile", Page.DIARY to "Diary", Page.WEAR to "Wear", Page.YOU to "You")
 
 /** A tickle wiggles the sloth from side to side; a poke makes it jump once. */
 private fun shake(
@@ -106,18 +136,12 @@ private fun shake(
     }
 }
 
-/** The top of a window without a frame: its name, to drag it by, and buttons to hide it in the tray or quit. */
+/** The top of a window without a frame: its name, to drag it by, and a cross to hide it in the tray. Quit is in the menu. */
 @Composable
-internal fun TitleBar(
-    onHide: (() -> Unit)?,
-    onQuit: () -> Unit,
-) {
+internal fun TitleBar(onHide: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         PixelText("Peresós", Modifier.weight(1f), color = Ink.paper)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            onHide?.let { PixelButton("Hide", Ink.paperDark, it, small = true) }
-            PixelButton("Quit", Ink.paperDark, onQuit, small = true)
-        }
+        PixelIconButton(CLOSE_ICON, "Hide", onHide)
     }
 }
 
@@ -199,12 +223,15 @@ private fun ColumnScope.Bite(
         }
         why?.let { Hint("Why: $it") }
     }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PixelButton("Take it", Ink.green, { model.answer(Answer.YES) })
-        PixelButton("Bin it", Ink.red, { model.answer(Answer.NO) })
-        PixelButton("Later", Ink.yellow, { model.answer(Answer.LATER) })
-        PixelButton("Another try", Ink.blue, { model.answer(Answer.AGAIN) })
-        PixelButton("Copy", Ink.paperDark, { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(bite.finished.trim()), null) })
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        PixelButton("Take it", Ink.green, { model.answer(Answer.YES) }, modifier = Modifier.weight(1f))
+        PixelButton("Bin it", Ink.red, { model.answer(Answer.NO) }, modifier = Modifier.weight(1f))
+        PixelButton("Later", Ink.yellow, { model.answer(Answer.LATER) }, modifier = Modifier.weight(1f))
+    }
+    // Used less, so smaller: chew it again, or copy it without an answer.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
+        PixelLink("Another try") { model.answer(Answer.AGAIN) }
+        PixelLink("Copy") { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(bite.finished.trim()), null) }
     }
 }
 
