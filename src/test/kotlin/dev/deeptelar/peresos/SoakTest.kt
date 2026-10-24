@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -286,7 +287,7 @@ class SoakTest {
         val sloth = model.session.snapshot.value.state // as the window draws it
         val onTop = model.isFull(sloth)
         val still = Portrait.pictures(sloth?.roundness ?: 0, onTop, model.wearing).first()
-        val stage = stage(WINDOW_SIZE.width.value * density.density, 170 * density.density, still, onTop)
+        val stage = stage(WINDOW_SIZE.width.value * density.density, HABITAT_HEIGHT.value * density.density, still, onTop)
         val pixels = still.pixels.flatMapIndexed { y, line -> line.indices.filter { Portrait.part(line[it]) != null }.map { it to y } }
         val (x, y) = pixels.random(random)
         onRoot().performTouchInput { click(Offset((stage.left + x + 0.5f) * stage.scale, (stage.top + y + 0.5f) * stage.scale)) }
@@ -416,7 +417,11 @@ class SoakTest {
     private fun ComposeUiTest.check() {
         assertEquals(pile, home.pile.items(), "the pile on disk")
         assertEquals(pile, model.pile, "the pile in the window")
+        onNodeWithContentDescription("Menu").performClick()
+        waitForIdle()
         assertExists("Pile ${pile.size}")
+        onNodeWithContentDescription("Menu").performClick()
+        waitForIdle()
         assertEquals(wearing, home.wearing().toSet(), "what it wears")
         assertEquals(wearing, model.wearing.toSet())
         assertEquals(facts, home.about().lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") })
@@ -506,7 +511,12 @@ class SoakTest {
         settle()
     }
 
-    private fun ComposeUiTest.tab(title: String) = click(title)
+    /** Opens the menu and picks the page [title], as the person does. */
+    private fun ComposeUiTest.tab(title: String) {
+        onNodeWithContentDescription("Menu").assertIsDisplayed().performClick()
+        waitForIdle()
+        click(title)
+    }
 
     /** Clicks the button or tab with [text], which the person must see without scrolling. */
     private fun ComposeUiTest.click(text: String) {

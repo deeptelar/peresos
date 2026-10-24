@@ -1,15 +1,19 @@
 package dev.deeptelar.peresos
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -23,6 +27,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -130,41 +138,93 @@ internal fun PixelButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     small: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
     val face = if (enabled) color else Ink.off
     val light = (face.red * 0.3f + face.green * 0.59f + face.blue * 0.11f) > 0.62f
     Box(
-        Modifier
+        modifier
             .offset(y = if (pressed) PX else 0.dp)
             .pixelBox(face, raised = !pressed)
             .clickable(press, indication = null, enabled = enabled, onClick = onClick)
-            .padding(horizontal = if (small) 12.dp else 16.dp, vertical = if (small) 7.dp else 10.dp),
+            .padding(horizontal = if (small) 12.dp else 10.dp, vertical = if (small) 7.dp else 10.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        PixelText(text, size = if (small) SMALL else BODY, color = if (light || !enabled) Ink.text else Color.White)
+        PixelText(text, size = if (small) SMALL else BODY, color = if (light || !enabled) Ink.text else Color.White, maxLines = 1)
     }
 }
 
-/** Tabs like the labels of a ledger, spread over the width: the chosen one is parchment, the others bark. */
+/** Text to click, for what is used less than a button: underlined, in the color of notes. */
 @Composable
-internal fun PixelTabs(
-    titles: List<String>,
-    selected: Int,
+internal fun PixelLink(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val color = if (enabled) Ink.faint else Ink.off
+    PixelText(
+        text,
+        Modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
+            .drawBehind { drawRect(color, Offset(0f, size.height - PX.toPx() / 1.5f), Size(size.width, PX.toPx() / 1.5f)) }
+            .padding(vertical = 4.dp),
+        size = SMALL,
+        color = color,
+    )
+}
+
+/** The three bars of a menu, in pixels: `#` is ink. */
+internal val MENU_ICON = listOf("#######", ".......", "#######", ".......", "#######")
+
+/** A cross, to hide the window. */
+internal val CLOSE_ICON = listOf("#...#", ".#.#.", "..#..", ".#.#.", "#...#")
+
+/** A small square button with an [icon] drawn in pixels, which screen readers and tests know as [description]. */
+@Composable
+internal fun PixelIconButton(
+    icon: List<String>,
+    description: String,
+    onClick: () -> Unit,
+    color: Color = Ink.paperDark,
+) {
+    Box(
+        Modifier
+            .pixelBox(color)
+            .clickable(onClick = onClick)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .semantics { contentDescription = description }
+            .padding(9.dp)
+            .size(PX * icon.first().length, PX * icon.size)
+            .drawBehind {
+                val p = PX.toPx()
+                icon.forEachIndexed { y, row -> row.forEachIndexed { x, c -> if (c == '#') drawRect(Ink.text, Offset(x * p, y * p), Size(p, p)) } }
+            },
+    )
+}
+
+/** A list of [items] on parchment, to pick one: the [selected] one is marked. */
+@Composable
+internal fun PixelMenu(
+    items: List<String>,
+    selected: Int?,
     modifier: Modifier = Modifier,
     onSelect: (Int) -> Unit,
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        titles.forEachIndexed { index, title ->
-            val chosen = index == selected
-            Box(
+    Column(modifier.width(IntrinsicSize.Max).pixelBox(Ink.paper).padding(PX * 2)) {
+        items.forEachIndexed { index, item ->
+            PixelText(
+                item,
                 Modifier
-                    .pixelBox(if (chosen) Ink.paper else Ink.woodLight, raised = chosen)
+                    .fillMaxWidth()
+                    .background(if (index == selected) Ink.paperDark else Color.Transparent)
                     .clickable { onSelect(index) }
-                    .padding(horizontal = 7.dp, vertical = 7.dp),
-            ) {
-                PixelText(title, color = if (chosen) Ink.text else Ink.paper, maxLines = 1)
-            }
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                maxLines = 1,
+            )
         }
     }
 }
