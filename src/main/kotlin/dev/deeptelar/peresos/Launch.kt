@@ -1,8 +1,8 @@
 package dev.deeptelar.peresos
 
+import mslinks.ShellLink
 import java.io.IOException
 import java.nio.file.Path
-import kotlin.io.path.copyTo
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.deleteIfExists
@@ -21,9 +21,9 @@ internal enum class Opener {
  * Puts Peresós on the desktop, or starts it at login, and takes it away again: `peresos desktop`,
  * `peresos autostart`, and Settings in the window. Each opens the window, which lives in the tray.
  *
- * On Linux it is a desktop entry, on a Mac a link to the app and a LaunchAgent, and on Windows a copy
- * of `peresos.lnk`, the shortcut that comes in the zip: a PC whose policy keeps PowerShell from making
- * shortcuts can still copy one.
+ * On Linux it is a desktop entry, on a Mac a link to the app and a LaunchAgent, and on Windows a
+ * shortcut to `peresos-window.exe`, which Peresós writes itself: PowerShell would need COM for it,
+ * which a PC whose policy controls apps does not allow.
  *
  * @param launcher the `peresos` the jpackage launcher started, where it really is.
  * @param desktop the person's desktop folder, which Windows and Linux may move elsewhere.
@@ -62,11 +62,7 @@ internal class Launchers(
         }
         file.parent.createDirectories()
         when {
-            windows -> {
-                val shortcut = launcher.resolveSibling("peresos.lnk")
-                if (!shortcut.exists()) throw IOException("This build of Peresós has no shortcut to copy. Install it from a release: ${Updater.WINDOWS_ONE_LINE}")
-                shortcut.copyTo(file, overwrite = true)
-            }
+            windows -> writeShortcut(launcher.resolveSibling("peresos-window.exe").toString(), file)
             mac && opener == Opener.DESKTOP -> {
                 file.deleteIfExists()
                 file.createSymbolicLinkPointingTo(app())
@@ -124,6 +120,19 @@ internal class Launchers(
     companion object {
         /** The launchers of the Peresós that runs, or `null` when it runs from its source. */
         fun here(): Launchers? = System.getProperty("jpackage.app-path")?.let { Launchers(Path.of(it).let { path -> runCatching { path.toRealPath() }.getOrDefault(path) }) }
+    }
+}
+
+/** Writes a shortcut of Windows at [to] that opens [target], the window's launcher, from its folder. */
+internal fun writeShortcut(
+    target: String,
+    to: Path,
+) {
+    val folder = target.substringBeforeLast('\\')
+    try {
+        ShellLink.createLink(target).setWorkingDir(folder).setIconLocation(target).setName("A sloth that eats one item of your backlog a day").saveTo(to.toString())
+    } catch (e: RuntimeException) {
+        throw IOException("Could not write the shortcut $to: ${e.message}", e)
     }
 }
 

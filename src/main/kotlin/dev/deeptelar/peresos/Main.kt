@@ -53,6 +53,8 @@ private suspend fun run(args: Array<String>) {
         "gemma" -> gemma(args.getOrNull(1))
         "desktop" -> launcher(Opener.DESKTOP, args.getOrNull(1))
         "autostart" -> launcher(Opener.LOGIN, args.getOrNull(1))
+        // For install.ps1: the shortcut of the Start menu, which PowerShell may not be allowed to make.
+        "shortcut" -> writeShortcut(System.getProperty("jpackage.app-path").let { Path.of(it).resolveSibling("peresos-window.exe").toString() }, Path.of(args[1]))
         "uninstall" -> uninstall()
         "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")

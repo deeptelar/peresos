@@ -1,6 +1,5 @@
 package dev.deeptelar.peresos
 
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -13,7 +12,6 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -73,19 +71,7 @@ class LaunchTest {
         assertContains(agent, "<key>RunAtLoad</key>")
     }
 
-    @Test
-    fun `on Windows it copies the shortcut of the zip, and says so when there is none`() {
-        val folder = userHome.resolve("AppData/Local/Programs/Peresos").createDirectories()
-        val launcher = folder.resolve("peresos.exe").apply { writeText("") }
-        val launchers = Launchers(launcher, "Windows 11", userHome, desktop)
-
-        val missing = assertFailsWith<IOException> { launchers.turn(Opener.DESKTOP, on = true) }
-        assertContains(missing.message!!, "no shortcut")
-
-        folder.resolve("peresos.lnk").writeText("a shortcut")
-        launchers.turn(Opener.DESKTOP, on = true)
-        assertEquals("a shortcut", desktop.resolve("Peresós.lnk").readText())
-    }
+    // The shortcut of Windows is tested on Windows, in the Package workflow: mslinks reads the drive of its target.
 
     @Test
     fun `peresos uninstall takes away its icon and its start at login, and nothing of another app`() {

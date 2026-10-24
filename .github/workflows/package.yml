@@ -53,19 +53,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # The shortcut of the window, which install.ps1 and peresos desktop and autostart copy: a PC
-          # whose policy allows no COM to PowerShell can still copy a file. Its target is written with
-          # %LOCALAPPDATA%, so it opens Peresós on every PC; it is made with another LOCALAPPDATA than
-          # the runner's, so the test after the install shows that it does.
-          $real = $env:LOCALAPPDATA
-          $env:LOCALAPPDATA = 'C:\NotThisOne\AppData\Local'
-          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut("$pwd\build\jpackage\peresos\peresos.lnk")
-          $shortcut.TargetPath = '%LOCALAPPDATA%\Programs\Peresos\peresos-window.exe'
-          $shortcut.WorkingDirectory = '%LOCALAPPDATA%\Programs\Peresos'
-          $shortcut.IconLocation = '%LOCALAPPDATA%\Programs\Peresos\peresos-window.exe,0'
-          $shortcut.Description = 'A sloth that eats one item of your backlog a day'
-          $shortcut.Save()
-          $env:LOCALAPPDATA = $real
           New-Item -ItemType Directory build/dist -Force | Out-Null
           Compress-Archive build/jpackage/peresos build/dist/peresos-windows-x64.zip
 
@@ -133,7 +120,7 @@ jobs:
           "Reply to the landlord" | Set-Content note.txt
           Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe" -ArgumentList 'feed', '--notify', "`"$pwd\note.txt`""
           if (-not ((peresos pile) -match 'Reply to the landlord')) { throw "Feed to Peresós did not feed it" }
-          # The shortcut of the Start menu opens the window, though it was made with another LOCALAPPDATA.
+          # The shortcut of the Start menu, which Peresós wrote itself, opens the window.
           $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Peres$([char]0xF3)s.lnk"
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($menu).TargetPath
           if ($target -ne "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe") { throw "The shortcut opens $target" }

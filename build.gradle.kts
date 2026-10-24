@@ -19,6 +19,8 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:3.6.0")
     // The text of a PDF fed to the pile, or pictures of its pages: Ollama takes no PDFs.
     implementation("org.apache.pdfbox:pdfbox:3.0.8")
+    // The shortcuts of Windows, written by Peresós itself: PowerShell needs COM for them, which a PC of work may not allow.
+    implementation("com.github.vatbub:mslinks:1.0.6.2")
     // The window, `peresos window`: Compose for the desktop this is built on.
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
