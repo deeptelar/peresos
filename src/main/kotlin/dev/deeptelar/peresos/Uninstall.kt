@@ -157,11 +157,15 @@ internal fun windowsScript(
         appendLine("\$ErrorActionPreference = 'SilentlyContinue'")
         appendLine("Wait-Process -Id $pid -Timeout 60")
         appendLine("\$dir = ${quoted(folder)}")
-        appendLine("Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) \"Peres\$([char]0xF3)s.lnk\") -Force")
+        // Cmdlets wherever they do, for a PC whose PowerShell runs in Constrained Language Mode, without .NET.
+        appendLine("\$full = \$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'")
+        appendLine("Remove-Item -LiteralPath \"\$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Peres\$([char]0xF3)s.lnk\" -Force")
         // Feed to Peresós, in the menu of files in the Explorer.
         appendLine("foreach (\$type in 'image', '.pdf', 'text') { Remove-Item -LiteralPath \"HKCU:\\Software\\Classes\\SystemFileAssociations\\\$type\\shell\\Peresos\" -Recurse -Force }")
-        appendLine("\$path = [Environment]::GetEnvironmentVariable('Path', 'User')")
-        appendLine("if (\$path) { [Environment]::SetEnvironmentVariable('Path', ((\$path -split ';') | Where-Object { \$_ -and \$_.TrimEnd('\\') -ne \$dir }) -join ';', 'User') }")
+        appendLine("\$path = (Get-ItemProperty -Path 'HKCU:\\Environment' -Name 'Path').Path")
+        appendLine("\$kept = ((\$path -split ';') | Where-Object { \$_ -and \$_.TrimEnd('\\') -ne \$dir }) -join ';'")
+        appendLine("if (\$path -and \$full) { [Environment]::SetEnvironmentVariable('Path', \$kept, 'User') }")
+        appendLine("if (\$path -and -not \$full) { New-ItemProperty -Path 'HKCU:\\Environment' -Name 'Path' -Value \$kept -PropertyType ExpandString -Force }")
         if (home != null) appendLine("Remove-Item -LiteralPath ${quoted(home)} -Recurse -Force")
         // The folder last, so that once it is gone everything is. The files of a program that just
         // quit can stay locked for a moment.
