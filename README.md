@@ -73,14 +73,9 @@ peresos doctor          # checks Ollama, Gemma, its folder, the desktop, and the
 peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missing
 ```
 
-### On a work PC
+### Without Ollama
 
-A PC managed by an employer or a school often has a policy that controls which apps may run, and
-Windows 11 can have one of its own, Smart App Control. PowerShell then runs in Constrained Language
-Mode, and the installer works within it: it installs Peresós, puts it in the Start menu and adds
-Feed to Peresós to the menu of files. Terminals find `peresos` after you sign out and in again.
-
-Such a PC may not let you install Ollama either. Peresós still works without it:
+If you can't install Ollama, Peresós still works:
 
 ```bash
 peresos gemma off       # it brings each item as it is, and you say done, bin it or later
@@ -90,11 +85,6 @@ peresos gemma on        # back to Gemma, once Ollama is there
 Without Gemma, the sloth brings you the oldest item as you wrote it, a lazy wake picks the shortest
 one, and the diary comes from the sloth's own lines. The pile, the files, the window and its growth
 stay the same. It is also a switch in Settings, in the window.
-
-The policy may also refuse apps that are not signed, and Peresós is not signed yet. Then Windows does
-not let `peresos.exe` run, and the installer says so. That choice belongs to whoever looks after the
-PC: ask them to allow Peresós, or use it on a computer of your own. Please don't try to get around
-the policy.
 
 ### Update
 
