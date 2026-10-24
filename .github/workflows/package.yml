@@ -127,6 +127,30 @@ jobs:
           if (-not (Test-Path "$env:USERPROFILE\.peresos\pile.md")) { throw "The pile went, though it was kept" }
           $menus | ForEach-Object { if (Test-Path $_) { throw "$_ is still there" } }
           exit 0
+      # The same, in the Windows PowerShell of a PC whose policy controls apps (a PC of work, Smart App
+      # Control): Constrained Language Mode, which allows cmdlets but not .NET or COM. __PSLockdownPolicy
+      # puts every new Windows PowerShell in it.
+      - name: Install on Windows in Constrained Language Mode
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          [Environment]::SetEnvironmentVariable('__PSLockdownPolicy', '4', 'Machine')
+          $mode = powershell -NoProfile -Command '$ExecutionContext.SessionState.LanguageMode'
+          if ($mode -ne 'ConstrainedLanguage') { throw "Windows PowerShell runs in $mode" }
+          $env:PERESOS_FROM = "$pwd\build\dist"
+          $said = powershell -NoProfile -Command 'Get-Content -Raw install.ps1 | Invoke-Expression' | Out-String
+          $said
+          if (-not ($said -match 'policy of this PC')) { throw "The installer did not say what the policy kept it from doing" }
+          $dir = "$env:LOCALAPPDATA\Programs\Peresos"
+          if (-not (Test-Path "$dir\peresos.exe")) { throw "Not installed" }
+          if (-not (((Get-ItemProperty HKCU:\Environment).Path -split ';') -contains $dir)) { throw "$dir is not in the PATH" }
+          & "$dir\peresos.exe" --version
+          "y", "y" | & "$dir\peresos.exe" uninstall
+          for ($i = 0; $i -lt 30 -and (Test-Path $dir); $i++) { Start-Sleep 1 }
+          if (Test-Path $dir) { throw "$dir is still there" }
+          if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -contains $dir) { throw "$dir is still in the PATH" }
+          if (Test-Path "HKCU:\Software\Classes\SystemFileAssociations\image\shell\Peresos") { throw "Feed to Peresós is still there" }
+          [Environment]::SetEnvironmentVariable('__PSLockdownPolicy', $null, 'Machine')
 
       - uses: actions/upload-artifact@v7
         with:
