@@ -43,6 +43,12 @@ class UpdateTest {
     }
 
     @Test
+    fun `a process that may start Peresós again gets none of what its launcher set`() {
+        val builder = ProcessBuilder("true").apply { environment()["_JPACKAGE_LAUNCHER"] = "0" }.fresh()
+        assertFalse("_JPACKAGE_LAUNCHER" in builder.environment())
+    }
+
+    @Test
     fun `it reads the version of the latest release from GitHub`() =
         runBlocking<Unit> {
             assertEquals("1.0.3", Updater(github(), from = null).latest())

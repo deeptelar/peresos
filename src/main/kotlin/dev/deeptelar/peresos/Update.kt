@@ -54,6 +54,7 @@ internal class Updater(
                 if (terminal) throw IOException("On Windows, Peresós cannot replace itself while this command runs. Run the installer again, in PowerShell: $WINDOWS_ONE_LINE")
                 val script = windowsUpdateScript(installed.folder, from, ProcessHandle.current().pid())
                 ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
+                    .fresh()
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start()
@@ -62,7 +63,7 @@ internal class Updater(
                 val installer = Files.createTempFile("peresos-install", ".sh")
                 try {
                     installer.writeBytes(installScript())
-                    val command = ProcessBuilder("sh", installer.toString())
+                    val command = ProcessBuilder("sh", installer.toString()).fresh()
                     val env = command.environment()
                     // The installer puts it back where it was: in the home, or with apt.
                     if (installed is Installed.Files) env["PERESOS_LOCAL"] = "1"
@@ -130,3 +131,17 @@ internal fun windowsUpdateScript(
         appendLine("Start-Process -FilePath ${quoted(folder.resolve("peresos-window.exe").toString())}")
     }
 }
+
+/**
+ * This process, without what the launcher of jpackage set for this one: for a process that may
+ * start Peresós again. A launcher that finds `_JPACKAGE_LAUNCHER` takes its arguments for the JVM's,
+ * so `peresos doctor` would look for a class called doctor.
+ */
+internal fun ProcessBuilder.fresh(): ProcessBuilder =
+    apply {
+        val env = environment()
+        env.remove("_JPACKAGE_LAUNCHER")
+        val app = System.getProperty("jpackage.app-path")?.let { Path.of(it).toAbsolutePath().parent?.parent?.toString() }
+        val libraries = env["LD_LIBRARY_PATH"]?.split(':')?.filter { it.isNotEmpty() && (app == null || !it.startsWith(app)) }
+        if (libraries.isNullOrEmpty()) env.remove("LD_LIBRARY_PATH") else env["LD_LIBRARY_PATH"] = libraries.joinToString(":")
+    }

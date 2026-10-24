@@ -245,6 +245,7 @@ internal class SlothModel(
     private fun reopen() {
         val launcher = System.getProperty("jpackage.app-path") ?: return
         ProcessBuilder("sh", "-c", "sleep 2; exec \"\$0\" window", launcher)
+            .fresh()
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
