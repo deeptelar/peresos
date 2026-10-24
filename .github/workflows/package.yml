@@ -57,28 +57,42 @@ jobs:
           Compress-Archive build/jpackage/peresos build/dist/peresos-windows-x64.zip
 
       # Each installer, from the files just built: the command must run from the PATH, and the doctor
-      # must get to its report. Ollama is not there, so the doctor says so and exits with 1. Then
-      # peresos uninstall must remove all of it, and the pile only when told.
+      # must get to its report. Ollama is not there, so the doctor says so and exits with 1. Feed to
+      # Peresós in the menu of files must feed a file, and peresos update must install the build
+      # again. Then peresos uninstall must remove all of it, and the pile only when told.
       - name: Install with apt
         if: runner.os == 'Linux'
         run: |
-          PERESOS_FROM=$PWD/build/dist sh install.sh
+          # A runner has no file manager: a pretend Nautilus gets the menu of files.
+          mkdir -p /tmp/pretend && printf '#!/bin/sh\n' > /tmp/pretend/nautilus && chmod 755 /tmp/pretend/nautilus
+          PATH=/tmp/pretend:$PATH PERESOS_FROM=$PWD/build/dist sh install.sh
           peresos --version
           peresos doctor --report </dev/null || true
           ls ~/.peresos/logs/doctor-*.md
+          printf 'Reply to the landlord\n' > note.txt
+          ~/.local/share/nautilus/scripts/"Feed to Peresós" "$PWD/note.txt"
+          peresos pile | grep "Reply to the landlord"
           printf 'y\nn\n' | peresos uninstall
           if dpkg -s peresos >/dev/null 2>&1 || [ -e /usr/bin/peresos ] || [ -e /opt/peresos ]; then echo "apt did not remove it"; exit 1; fi
+          [ ! -e ~/.local/share/nautilus/scripts/"Feed to Peresós" ] || { echo "The menu of Nautilus is still there"; exit 1; }
           ls ~/.peresos/logs/doctor-*.md
       - name: Install in the home
         if: runner.os != 'Windows'
         run: |
-          PERESOS_LOCAL=1 PERESOS_FROM=$PWD/build/dist sh install.sh
+          mkdir -p /tmp/pretend && printf '#!/bin/sh\n' > /tmp/pretend/nautilus && chmod 755 /tmp/pretend/nautilus
+          PATH=/tmp/pretend:$PATH PERESOS_LOCAL=1 PERESOS_FROM=$PWD/build/dist sh install.sh
           ~/.local/bin/peresos --version
           ~/.local/bin/peresos feed "Try the installer"
-          ~/.local/bin/peresos pile
+          printf 'Reply to the landlord\n' > note.txt
+          ~/.local/bin/peresos feed --notify note.txt
+          ~/.local/bin/peresos pile | grep "Reply to the landlord"
           cat ~/.peresos/logs/doctor-*.md 2>/dev/null | tail -20 || true
+          # peresos update, with the build: the installer next to its packages, outside build/dist.
+          mkdir -p /tmp/from && cp build/dist/* install.sh /tmp/from/
+          printf 'y\n' | PERESOS_FROM=/tmp/from ~/.local/bin/peresos update
+          ~/.local/bin/peresos --version
           printf 'y\ny\n' | ~/.local/bin/peresos uninstall
-          for gone in ~/.local/bin/peresos ~/.local/share/peresos ~/.local/share/applications/peresos.desktop ~/Applications/Peresos.app ~/.peresos; do
+          for gone in ~/.local/bin/peresos ~/.local/share/peresos ~/.local/share/applications/peresos.desktop ~/Applications/Peresos.app ~/.peresos ~/.local/share/nautilus/scripts/"Feed to Peresós"; do
             [ ! -e "$gone" ] && [ ! -L "$gone" ] || { echo "$gone is still there"; exit 1; }
           done
       - name: Install on Windows
@@ -94,6 +108,15 @@ jobs:
           Get-ChildItem "$env:USERPROFILE\.peresos\logs\doctor-*.md" | Get-Content
           $shortcut = "$([Environment]::GetFolderPath('Programs'))\Peres$([char]0xF3)s.lnk"
           if (-not (Test-Path $shortcut)) { throw "No shortcut in the Start menu" }
+          # Feed to Peresós in the menu of files: its keys, and the window's launcher that they run.
+          $menus = 'image', '.pdf', 'text' | ForEach-Object { "HKCU:\Software\Classes\SystemFileAssociations\$_\shell\Peresos" }
+          $menus | ForEach-Object { if (-not (Test-Path "$_\command")) { throw "No Feed to Peresós in $_" } }
+          "Reply to the landlord" | Set-Content note.txt
+          Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe" -ArgumentList 'feed', '--notify', "`"$pwd\note.txt`""
+          if (-not ((peresos pile) -match 'Reply to the landlord')) { throw "Feed to Peresós did not feed it" }
+          # A running peresos.exe cannot replace itself: the terminal is told to run the installer.
+          $said = "y" | peresos update | Out-String
+          if (-not ($said -match 'install.ps1')) { throw "peresos update did not say how: $said" }
           "y", "n" | peresos uninstall
           # PowerShell removes it once peresos has quit.
           $dir = "$env:LOCALAPPDATA\Programs\Peresos"
@@ -102,6 +125,7 @@ jobs:
           if (Test-Path $shortcut) { throw "The shortcut is still there" }
           if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $dir) { throw "$dir is still in the PATH" }
           if (-not (Test-Path "$env:USERPROFILE\.peresos\pile.md")) { throw "The pile went, though it was kept" }
+          $menus | ForEach-Object { if (Test-Path $_) { throw "$_ is still there" } }
           exit 0
 
       - uses: actions/upload-artifact@v7
