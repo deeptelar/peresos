@@ -61,7 +61,7 @@ install_deb() {
 		sudo apt-get install -y "$tmp/peresos.deb"
 	fi
 	peresos=/usr/bin/peresos
-	say "Peresós is installed. Remove it with: sudo apt remove peresos"
+	say "Peresós is installed. Remove it with: peresos uninstall (or sudo apt remove peresos)"
 }
 
 install_linux_home() {
@@ -86,7 +86,7 @@ StartupWMClass=dev-deeptelar-peresos-MainKt
 DESKTOP
 	peresos="$bin/peresos"
 	say "Peresós is installed in $app, and in the menu of apps."
-	say "Remove it with: rm -rf $app $bin/peresos ~/.local/share/applications/peresos.desktop"
+	say "Remove it with: peresos uninstall"
 	on_path
 }
 
@@ -100,7 +100,7 @@ install_mac() {
 	ln -sf "$HOME/Applications/Peresos.app/Contents/MacOS/Peresos" "$bin/peresos"
 	peresos="$bin/peresos"
 	say "Peresós is installed in ~/Applications: open it there for its window, or type peresos in a terminal."
-	say "Remove it with: rm -rf ~/Applications/Peresos.app $bin/peresos"
+	say "Remove it with: peresos uninstall"
 	on_path
 }
 
