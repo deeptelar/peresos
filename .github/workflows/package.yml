@@ -1,0 +1,121 @@
+# Builds the packages of Peresós, with its own Java, on Linux, macOS and Windows, and installs each
+# with its installer to see that it starts. On a tag v1.2.3 it publishes them as a GitHub release,
+# where install.sh and install.ps1 download them. On a pull request, or by hand (Actions > Package >
+# Run workflow), it keeps them as artifacts of the run only.
+name: Package
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 for an older glibc: the launcher then runs on more Linuxes.
+          - os: ubuntu-22.04
+          - os: macos-14
+          - os: windows-2022
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: The tag is the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' build.gradle.kts)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "The tag $GITHUB_REF_NAME is not v$version of build.gradle.kts"; exit 1; }
+
+      - run: ./gradlew appImage
+
+      - name: Pack for Linux
+        if: runner.os == 'Linux'
+        run: packaging/linux.sh
+      - name: Pack for macOS
+        if: runner.os == 'macOS'
+        run: packaging/macos.sh
+      - name: Pack for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory build/dist -Force | Out-Null
+          Compress-Archive build/jpackage/peresos build/dist/peresos-windows-x64.zip
+
+      # Each installer, from the files just built: the command must run from the PATH, and the doctor
+      # must get to its report. Ollama is not there, so the doctor says so and exits with 1.
+      - name: Install with apt
+        if: runner.os == 'Linux'
+        run: |
+          PERESOS_FROM=$PWD/build/dist sh install.sh
+          peresos --version
+          peresos doctor --report </dev/null || true
+          ls ~/.peresos/logs/doctor-*.md
+          sudo apt-get remove -y peresos
+      - name: Install in the home
+        if: runner.os != 'Windows'
+        run: |
+          PERESOS_LOCAL=1 PERESOS_FROM=$PWD/build/dist sh install.sh
+          ~/.local/bin/peresos --version
+          ~/.local/bin/peresos feed "Try the installer"
+          ~/.local/bin/peresos pile
+          cat ~/.peresos/logs/doctor-*.md 2>/dev/null | tail -20 || true
+      - name: Install on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PERESOS_FROM = "$pwd\build\dist"
+          ./install.ps1
+          peresos --version
+          peresos feed "Try the installer"
+          peresos pile
+          peresos doctor --report
+          Get-ChildItem "$env:USERPROFILE\.peresos\logs\doctor-*.md" | Get-Content
+          Test-Path "$([Environment]::GetFolderPath('Programs'))\Peres$([char]0xF3)s.lnk"
+          exit 0
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: peresos-${{ runner.os }}
+          path: build/dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'NOTES'
+          Install it with its own Java, and the `peresos` command on your PATH:
+
+          - **Linux and macOS:** `curl -fsSL https://raw.githubusercontent.com/deeptelar/peresos/main/install.sh | sh`
+          - **Windows (PowerShell):** `irm https://raw.githubusercontent.com/deeptelar/peresos/main/install.ps1 | iex`
+          - **Debian and Ubuntu by hand:** download `peresos-linux-amd64.deb`, then `sudo apt install ./peresos-linux-amd64.deb`
+
+          Then `peresos doctor` checks Ollama and Gemma, and `peresos doctor --fix` pulls Gemma.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Peresós ${GITHUB_REF_NAME#v}" --notes-file notes.md

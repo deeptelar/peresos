@@ -42,17 +42,45 @@ sleeps on top of its branch, full, until you feed it again.
 
 ![The four phases of Peresós, each with its own animation, and each asleep on top of the branch after eating the whole pile](docs/peresos-phases.gif)
 
-## Run it
+## Install
 
-You need [Ollama](https://ollama.com) with Gemma 4, and a JDK 17 or newer:
+One line installs Peresós with its own Java, puts the `peresos` command on your PATH, adds it to
+the menu of apps (it opens its window), and runs `peresos doctor`:
 
 ```bash
-ollama pull gemma4:12b
+# Linux and macOS (Apple silicon)
+curl -fsSL https://raw.githubusercontent.com/deeptelar/peresos/main/install.sh | sh
+```
+
+```powershell
+# Windows, in PowerShell
+irm https://raw.githubusercontent.com/deeptelar/peresos/main/install.ps1 | iex
+```
+
+On Debian and Ubuntu it installs the `.deb` of the [latest release](https://github.com/deeptelar/peresos/releases/latest)
+with apt, so `sudo apt remove peresos` removes it; elsewhere it installs in your home, without sudo.
+You also need [Ollama](https://ollama.com/download). Then:
+
+```bash
+peresos doctor          # checks Ollama, Gemma, its folder, the desktop, and the command
+peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missing
+```
+
+### Build it yourself
+
+With a JDK 17 or newer:
+
+```bash
 git clone https://github.com/deeptelar/peresos.git
 cd peresos
 ./gradlew installDist
 alias peresos="$PWD/build/install/peresos/bin/peresos"
 ```
+
+`./gradlew appImage` then `packaging/linux.sh` builds the `.deb` and the `.tar.gz` of a release;
+the [Package workflow](.github/workflows/package.yml) builds them on Linux, macOS and Windows.
+
+## Run it
 
 ```bash
 peresos about "I work from home on Tuesdays and Thursdays"   # once: facts it uses when it prepares things
@@ -75,6 +103,14 @@ another folder. `peresos --hungry` lets it eat more than once a day, for a demo.
 the model runs in your local Ollama. The one exception is opt-in: if you give the window a town for
 its weather, that town goes to [Open-Meteo](https://open-meteo.com), and nothing else. With thinking on, a meal takes 10 to 60 seconds on an 8 GB GPU (an RTX 3070):
 slow, but you were going to wait a day anyway.
+
+### When something goes wrong
+
+`peresos doctor` says what is missing and how to get it. What fails, also in the window, goes with
+its details to `~/.peresos/logs/peresos.log`, and stays there. `peresos doctor --report` writes a
+file with the checks, your system and the last failures, but no word of your pile, your diary or
+what Peresós knows about you, and offers to open a new issue with it filled in. Nothing is sent
+until you submit the issue yourself.
 
 ## A home on your desktop
 

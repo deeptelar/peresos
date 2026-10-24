@@ -10,12 +10,31 @@ import dev.deeptelar.telar.agent.ChatResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
+import java.awt.Desktop
+import java.net.ConnectException
+import java.net.URI
 import java.time.LocalDate
+import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.milliseconds
 
 private val home = Home.default
 
+private val MAC = System.getProperty("os.name").startsWith("Mac")
+
 suspend fun main(args: Array<String>) {
+    // The window's threads have no terminal to print to: what fails there goes to the log.
+    Thread.setDefaultUncaughtExceptionHandler { thread, e -> home.log.error("Failed in ${thread.name}", e) }
+    try {
+        run(args)
+    } catch (e: Throwable) {
+        home.log.error("peresos ${args.joinToString(" ")}", e)
+        say(trouble(e))
+        say("What happened is in ${home.shown}/logs/peresos.log. To report it: peresos doctor --report")
+        exitProcess(1)
+    }
+}
+
+private suspend fun run(args: Array<String>) {
     val pile = home.pile
     when (args.firstOrNull()) {
         "feed" -> feed(pile, args.drop(1))
@@ -24,7 +43,11 @@ suspend fun main(args: Array<String>) {
         "wear" -> wear(args.drop(1), sloth(Unused, pile).lastResult(home.config)?.state)
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
+        "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
+        "--version", "version" -> println("peresos $VERSION")
         "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+        // Opened from the Finder, the app of macOS has no terminal: it opens the window.
+        null if MAC && System.getenv("TERM") == null && System.console() == null -> window(home)
         null, "--hungry", "--lazy" -> {
             val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Answer it there.")
             awake.use {
@@ -34,6 +57,45 @@ suspend fun main(args: Array<String>) {
             }
         }
         else -> println(USAGE)
+    }
+}
+
+/** `peresos doctor`: are Ollama and Gemma there, can it write its home, and is there a desktop for the window. */
+private suspend fun doctor(
+    fix: Boolean,
+    report: Boolean,
+) {
+    say(whereItRuns())
+    println()
+    // No time limit on a request: pulling Gemma takes minutes.
+    HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client ->
+        val doctor = Doctor(home, client, gemma = model(client, think = false))
+        val checks = doctor.examine(fix) { check -> check.line().lines().forEach { println("  $it") } }
+        println()
+        val failed = checks.count { it.verdict == Verdict.FAIL }
+        say(if (failed == 0) "Peresós has everything it needs. Feed it: peresos feed \"...\"" else "Peresós cannot eat until ${if (failed == 1) "the line marked [no] is fixed" else "the lines marked [no] are fixed"}.")
+        if (report) {
+            val file = doctor.save(doctor.report(checks))
+            println()
+            say("The report is in $file. It has no word of your pile, your diary or what Peresós knows about you.")
+            say("To report a problem, attach it to an issue: https://github.com/deeptelar/peresos/issues/new")
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                print("  Open a new issue with the report filled in, in your browser? Nothing is sent until you submit it. [y/N] ")
+                if (readlnOrNull()?.trim()?.lowercase() in setOf("y", "yes")) Desktop.getDesktop().browse(URI(doctor.issue(checks)))
+            }
+        }
+        if (failed > 0) exitProcess(1)
+    }
+}
+
+/** What went wrong, in words for the person, and what to do about it. */
+internal fun trouble(cause: Throwable): String {
+    val chain = generateSequence(cause) { it.cause }.toList()
+    return when {
+        chain.any { it is ConnectException } -> "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing."
+        chain.any { it.message.orEmpty().let { message -> "not found" in message && Home.modelName in message } } ->
+            "Ollama has no ${Home.modelName} yet. peresos doctor --fix pulls it."
+        else -> "Something went wrong: ${chain.last().message ?: chain.last()::class.simpleName}"
     }
 }
 
@@ -118,6 +180,8 @@ private suspend fun report(sloth: Sloth) {
 /** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
 private val animated: Boolean =
     System.getenv("TERM") != "dumb" &&
+        // The old console of Windows prints the codes that move the cursor; Windows Terminal moves it.
+        (!System.getProperty("os.name").startsWith("Windows") || System.getenv("WT_SESSION") != null) &&
         System.console()?.let { console -> runCatching { console.javaClass.getMethod("isTerminal").invoke(console) as Boolean }.getOrDefault(true) } == true
 
 /** The portrait and the phase it is in. In a terminal it plays its animation twice, slowly, then stands still. */
@@ -238,6 +302,7 @@ private val USAGE =
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
       peresos window          open its home in a window, where you can do all of this with buttons
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
+      peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
 
     It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer,
     except the town you give peresos place.
