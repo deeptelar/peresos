@@ -120,7 +120,11 @@ internal class Doctor(
         val add = { check: Check -> (check.verdict == Verdict.OK).also { checks += check.also(found) } }
         add(home())
         // Each needs the one before: no models without Ollama, no answer without the model.
-        if (add(ollama()) && add(pulled(fix))) add(answers())
+        if (!home.gemma()) {
+            add(Check("Gemma", Verdict.OK, "off: Peresós brings each item as it is, and needs no Ollama", "To prepare items with Gemma: peresos gemma on"))
+        } else if (add(ollama()) && add(pulled(fix))) {
+            add(answers())
+        }
         add(window())
         add(command())
         return checks
@@ -142,7 +146,7 @@ internal class Doctor(
         val installed = machine.find("ollama") != null || machine.ollamaApps.any { it.exists() }
         return when {
             !local -> Check("Ollama", Verdict.FAIL, "not running at $ollama (OLLAMA_HOST)", "Start it there, or unset OLLAMA_HOST to use the Ollama of this computer.")
-            !installed -> Check("Ollama", Verdict.FAIL, "not installed", "Install it from https://ollama.com/download, then run peresos doctor --fix.")
+            !installed -> Check("Ollama", Verdict.FAIL, "not installed", "Install it from https://ollama.com/download, then run peresos doctor --fix. Or use Peresós without it: peresos gemma off")
             machine.linux -> Check("Ollama", Verdict.FAIL, "installed, but not running", "Start it: ollama serve (or sudo systemctl start ollama)")
             else -> Check("Ollama", Verdict.FAIL, "installed, but not running", "Open the Ollama app, or run: ollama serve")
         }

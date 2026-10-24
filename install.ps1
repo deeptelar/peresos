@@ -63,13 +63,15 @@ if (-not (($path -split ';') -contains $dir)) {
 }
 if (-not (($env:Path -split ';') -contains $dir)) { $env:Path = "$env:Path;$dir" }
 
-# The window, in the Start menu. A shortcut takes COM, which Constrained Language Mode does not allow.
+# The window, in the Start menu. Peresós writes the shortcut itself: PowerShell would need COM for it,
+# which Constrained Language Mode does not allow.
 $window = Join-Path $dir 'peresos-window.exe'
-if ($full) {
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) "$name.lnk"))
-    $shortcut.TargetPath = $window
-    $shortcut.Description = 'A sloth that eats one item of your backlog a day'
-    $shortcut.Save()
+$menu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$name.lnk"
+try {
+    & (Join-Path $dir 'peresos.exe') shortcut $menu
+    $inMenu = Test-Path $menu
+} catch {
+    $inMenu = $false # a policy that keeps peresos.exe from running: the doctor says so below
 }
 
 # Feed to Peresós in the menu of photos, PDFs and text files in the Explorer (under Show more options
@@ -81,12 +83,13 @@ foreach ($type in 'image', '.pdf', 'text') {
     New-Item -Path "$key\command" -Value "`"$window`" feed --notify `"%1`"" -Force | Out-Null
 }
 
-if ($full) {
+if ($inMenu) {
     Say "$name is installed in $dir, in the Start menu, and in the menu of files: Feed to $name."
 } else {
     Say "$name is installed in $dir, and in the menu of files: Feed to $name."
-    Say "A policy of this PC keeps PowerShell from making its shortcut in the Start menu: open its window with peresos window."
+    Say "It could not make its shortcut in the Start menu: open its window with peresos window."
 }
+Say "For an icon on the desktop: peresos desktop on. To start it when you sign in: peresos autostart on."
 Say "Type peresos in any new terminal. To remove it: peresos uninstall"
 if ($signIn) { Say "Terminals find peresos after you sign out and in again; this one already does." }
 if ($env:PERESOS_NO_DOCTOR) { return }

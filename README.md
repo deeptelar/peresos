@@ -77,9 +77,19 @@ peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missin
 
 A PC managed by an employer or a school often has a policy that controls which apps may run, and
 Windows 11 can have one of its own, Smart App Control. PowerShell then runs in Constrained Language
-Mode, and the installer works within it: it installs Peresós and adds Feed to Peresós to the menu of
-files, but it cannot make the shortcut in the Start menu, so you open the window with
-`peresos window`. Terminals find `peresos` after you sign out and in again.
+Mode, and the installer works within it: it installs Peresós, puts it in the Start menu and adds
+Feed to Peresós to the menu of files. Terminals find `peresos` after you sign out and in again.
+
+Such a PC may not let you install Ollama either. Peresós still works without it:
+
+```bash
+peresos gemma off       # it brings each item as it is, and you say done, bin it or later
+peresos gemma on        # back to Gemma, once Ollama is there
+```
+
+Without Gemma, the sloth brings you the oldest item as you wrote it, a lazy wake picks the shortest
+one, and the diary comes from the sloth's own lines. The pile, the files, the window and its growth
+stay the same. It is also a switch in Settings, in the window.
 
 The policy may also refuse apps that are not signed, and Peresós is not signed yet. Then Windows does
 not let `peresos.exe` run, and the installer says so. That choice belongs to whoever looks after the
@@ -136,7 +146,7 @@ peresos --lazy                                               # or the easiest on
 peresos pile                                                 # what is still on the pile
 peresos diary                                                # what it wrote about its meals
 peresos wear sunglasses coffee                               # dress it up (peresos wear lists it all)
-peresos window                                               # its home in your tray
+peresos window                                               # its home in your tray; the terminal can close
 peresos place "Girona"                                       # optional: that town's weather in the window
 ```
 
@@ -162,12 +172,23 @@ until you submit the issue yourself.
 
 ## A home on your desktop
 
-`peresos window` puts the sloth in your tray, like JetBrains Toolbox: a small pixel face in the top
+`peresos window` puts the sloth in your tray, and the terminal can close (`peresos window --here`
+keeps it in the terminal), like JetBrains Toolbox: a small pixel face in the top
 bar, and under it a small window that fits the screen. At the top is its habitat, a pixel-art jungle
 where it hangs from its branch and plays its animations. Below it is what the sloth is doing, with
 the buttons for it: wake it, then take what Gemma prepared, bin it or leave it for later (or ask
 for another try, or copy it). The menu (☰) has the rest of what the terminal does: feed the pile,
-read the diary, dress it up, tell it about you, **About** (which links back to this page), and quit.
+read the diary, dress it up, tell it about you, **Settings**, **About** (which links back to this
+page), and quit.
+
+To open it without a terminal, use the Start menu or the menu of apps, or:
+
+```bash
+peresos desktop on      # an icon on your desktop that opens the window
+peresos autostart on    # start it when you sign in, into the tray
+```
+
+Both are also in Settings, with **Use Gemma**, and `off` takes them away.
 
 ![Peresós in the tray: its face in the top bar with a yellow badge, and the window under it with a lazy bite waiting for an answer](docs/peresos-window.png)
 

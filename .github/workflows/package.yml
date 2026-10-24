@@ -91,8 +91,14 @@ jobs:
           mkdir -p /tmp/from && cp build/dist/* install.sh /tmp/from/
           printf 'y\n' | PERESOS_FROM=/tmp/from ~/.local/bin/peresos update
           ~/.local/bin/peresos --version
+          # An icon on the desktop, and the start at login.
+          ~/.local/bin/peresos desktop on | grep "Peresós has an icon"
+          ~/.local/bin/peresos autostart on | grep "Peresós has the start at login"
+          ~/.local/bin/peresos gemma off
+          ~/.local/bin/peresos doctor </dev/null | grep "Gemma.*off"
           printf 'y\ny\n' | ~/.local/bin/peresos uninstall
-          for gone in ~/.local/bin/peresos ~/.local/share/peresos ~/.local/share/applications/peresos.desktop ~/Applications/Peresos.app ~/.peresos ~/.local/share/nautilus/scripts/"Feed to Peresós"; do
+          for gone in ~/.local/bin/peresos ~/.local/share/peresos ~/.local/share/applications/peresos.desktop ~/Applications/Peresos.app ~/.peresos ~/.local/share/nautilus/scripts/"Feed to Peresós" \
+            ~/Desktop/peresos.desktop ~/.config/autostart/peresos.desktop ~/Desktop/Peresós ~/Library/LaunchAgents/dev.deeptelar.peresos.plist; do
             [ ! -e "$gone" ] && [ ! -L "$gone" ] || { echo "$gone is still there"; exit 1; }
           done
       - name: Install on Windows
@@ -114,6 +120,26 @@ jobs:
           "Reply to the landlord" | Set-Content note.txt
           Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe" -ArgumentList 'feed', '--notify', "`"$pwd\note.txt`""
           if (-not ((peresos pile) -match 'Reply to the landlord')) { throw "Feed to Peresós did not feed it" }
+          # The shortcut of the Start menu, which Peresós wrote itself, opens the window.
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Peres$([char]0xF3)s.lnk"
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($menu).TargetPath
+          if ($target -ne "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe") { throw "The shortcut opens $target" }
+          function Opened($how) {
+              for ($i = 0; $i -lt 30 -and -not (Get-Process peresos-window -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
+              if (-not (Get-Process peresos-window -ErrorAction SilentlyContinue)) { throw "$how opened no window" }
+              Stop-Process -Name peresos-window
+              Start-Sleep 2
+          }
+          Start-Process $menu
+          Opened "The shortcut of the Start menu"
+          # peresos window returns at once, and the window goes on without the terminal.
+          peresos window
+          Opened "peresos window"
+          peresos desktop on
+          peresos autostart on
+          $desktop = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders').Desktop
+          $openers = "$desktop\Peres$([char]0xF3)s.lnk", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Peres$([char]0xF3)s.lnk"
+          $openers | ForEach-Object { if (-not (Test-Path $_)) { throw "No $_" } }
           # A running peresos.exe cannot replace itself: the terminal is told to run the installer.
           $said = "y" | peresos update | Out-String
           if (-not ($said -match 'install.ps1')) { throw "peresos update did not say how: $said" }
@@ -125,7 +151,7 @@ jobs:
           if (Test-Path $shortcut) { throw "The shortcut is still there" }
           if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $dir) { throw "$dir is still in the PATH" }
           if (-not (Test-Path "$env:USERPROFILE\.peresos\pile.md")) { throw "The pile went, though it was kept" }
-          $menus | ForEach-Object { if (Test-Path $_) { throw "$_ is still there" } }
+          $menus + $openers | ForEach-Object { if (Test-Path $_) { throw "$_ is still there" } }
           exit 0
       # The same, in the Windows PowerShell of a PC whose policy controls apps (a PC of work, Smart App
       # Control): Constrained Language Mode, which allows cmdlets but not .NET or COM. __PSLockdownPolicy
@@ -140,7 +166,8 @@ jobs:
           $env:PERESOS_FROM = "$pwd\build\dist"
           $said = powershell -NoProfile -Command 'Get-Content -Raw install.ps1 | Invoke-Expression' | Out-String
           $said
-          if (-not ($said -match 'policy of this PC')) { throw "The installer did not say what the policy kept it from doing" }
+          if (-not ($said -match 'in the Start menu')) { throw "The installer did not put it in the Start menu" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Peres$([char]0xF3)s.lnk")) { throw "No shortcut in the Start menu" }
           $dir = "$env:LOCALAPPDATA\Programs\Peresos"
           if (-not (Test-Path "$dir\peresos.exe")) { throw "Not installed" }
           if (-not (((Get-ItemProperty HKCU:\Environment).Path -split ';') -contains $dir)) { throw "$dir is not in the PATH" }

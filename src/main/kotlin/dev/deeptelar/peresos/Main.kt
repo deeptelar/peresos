@@ -11,6 +11,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
 import java.awt.Desktop
+import java.awt.GraphicsEnvironment
+import java.io.File
 import java.io.IOException
 import java.net.ConnectException
 import java.net.URI
@@ -48,22 +50,59 @@ private suspend fun run(args: Array<String>) {
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
+        "gemma" -> gemma(args.getOrNull(1))
+        "desktop" -> launcher(Opener.DESKTOP, args.getOrNull(1))
+        "autostart" -> launcher(Opener.LOGIN, args.getOrNull(1))
+        // For install.ps1: the shortcut of the Start menu, which PowerShell may not be allowed to make.
+        "shortcut" -> writeShortcut(System.getProperty("jpackage.app-path").let { Path.of(it).resolveSibling("peresos-window.exe").toString() }, Path.of(args[1]))
         "uninstall" -> uninstall()
         "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")
-        "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+        "window" ->
+            if ("--here" in args || !detach(args)) {
+                window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
+            }
         // Opened from the Finder, the app of macOS has no terminal: it opens the window.
         null if MAC && System.getenv("TERM") == null && System.console() == null -> window(home)
         null, "--hungry", "--lazy" -> {
             val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Answer it there.")
             awake.use {
                 HttpClient(CIO).use { client ->
-                    wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about), lazy = "--lazy" in args)
+                    wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about, gemma = home::gemma), lazy = "--lazy" in args)
                 }
             }
         }
         else -> println(USAGE)
     }
+}
+
+/**
+ * Starts the window as a process of its own, which goes on when the terminal closes, and says so.
+ * `false` when there is no launcher to start, as from the source, or no desktop: then it runs here,
+ * where its errors show.
+ */
+private fun detach(args: Array<String>): Boolean {
+    val launcher = System.getProperty("jpackage.app-path")?.let { Path.of(it) } ?: return false
+    if (GraphicsEnvironment.isHeadless()) return false
+    val windows = System.getProperty("os.name").startsWith("Windows")
+    // On Windows the window's own launcher, which opens no console.
+    val program = (if (windows) launcher.resolveSibling("peresos-window.exe").takeIf { it.exists() } else null) ?: launcher
+    val window = listOf(program.toString()) + args.toList() + "--here"
+    val command =
+        when {
+            windows -> window
+            // Its own session: the terminal's hangup never reaches it.
+            onPath("setsid") != null -> listOf("setsid") + window
+            else -> listOf("nohup") + window
+        }
+    ProcessBuilder(command)
+        .fresh()
+        .redirectInput(ProcessBuilder.Redirect.from(File(if (windows) "NUL" else "/dev/null")))
+        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        .redirectError(ProcessBuilder.Redirect.DISCARD)
+        .start()
+    say("Peresós is in your tray. You can close this terminal.")
+    return true
 }
 
 /** `peresos doctor`: are Ollama and Gemma there, can it write its home, and is there a desktop for the window. */
@@ -139,6 +178,44 @@ private suspend fun update(updater: Updater) {
     }
 }
 
+/** `peresos gemma on|off`: whether it prepares items with Gemma, or brings them as they are, for a computer without Ollama. */
+private fun gemma(choice: String?) {
+    when (choice) {
+        "on" -> home.useGemma(true)
+        "off" -> home.useGemma(false)
+        null -> Unit
+        else -> return say("peresos gemma on, or peresos gemma off.")
+    }
+    say(
+        if (home.gemma()) {
+            "Peresós uses $modelName in your Ollama: it prepares the finished version of each item. Without Ollama: peresos gemma off"
+        } else {
+            "Peresós works without Gemma: it brings you each item as it is, and you say done, bin it or later. With Ollama: peresos gemma on"
+        },
+    )
+}
+
+/** `peresos desktop on|off` and `peresos autostart on|off`: an icon on the desktop, and the start at login, into the tray. */
+private fun launcher(
+    opener: Opener,
+    choice: String?,
+) {
+    val launchers = Launchers.here() ?: return say("Peresós runs from its source here: install it to put it on the desktop or start it at login.")
+    val what = if (opener == Opener.DESKTOP) "an icon on your desktop" else "the start at login, into the tray"
+    val command = if (opener == Opener.DESKTOP) "peresos desktop" else "peresos autostart"
+    when (choice) {
+        "on", "off" ->
+            try {
+                launchers.turn(opener, choice == "on")
+            } catch (e: IOException) {
+                return say(e.message.orEmpty())
+            }
+        null -> Unit
+        else -> return say("$command on, or $command off.")
+    }
+    say(if (launchers.isOn(opener)) "Peresós has $what: ${launchers.file(opener)}. To take it away: $command off" else "Peresós has no $what. To add it: $command on")
+}
+
 /** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
 private fun yes(question: String): Boolean {
     print("  $question [y/N] ")
@@ -149,7 +226,7 @@ private fun yes(question: String): Boolean {
 internal fun trouble(cause: Throwable): String {
     val chain = generateSequence(cause) { it.cause }.toList()
     return when {
-        chain.any { it is ConnectException } -> "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing."
+        chain.any { it is ConnectException } -> "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing. Without Ollama: peresos gemma off"
         chain.any { it.message.orEmpty().let { message -> "not found" in message && Home.modelName in message } } ->
             "Ollama has no ${Home.modelName} yet. peresos doctor --fix pulls it."
         else -> "Something went wrong: ${chain.last().message ?: chain.last()::class.simpleName}"
@@ -196,16 +273,17 @@ private fun askFor(sloth: Sloth): Answer? {
     val bite = checkNotNull(sloth.bite)
     println()
     sloth.why?.let { say("It picked the easiest one: $it") }
-    say("It chewed this one: ${bite.title}  (${bite.kind.name.lowercase()})")
+    // Without Gemma it brings the item as it is: there is no other version to try.
+    say(if (sloth.raw) "It brought you this one, unchewed:" else "It chewed this one: ${bite.title}  (${bite.kind.name.lowercase()})")
     println()
     wrap(bite.finished).forEach { println("    $it") }
     println()
-    print("  [y] take it   [n] bin it   [l] later   [a] another try   (Enter: decide another day)  ")
+    print(if (sloth.raw) "  [y] done   [n] bin it   [l] later   (Enter: decide another day)  " else "  [y] take it   [n] bin it   [l] later   [a] another try   (Enter: decide another day)  ")
     return when (readlnOrNull()?.trim()?.lowercase()) {
-        "y", "yes" -> Answer.YES
+        "y", "yes", "d", "done" -> Answer.YES
         "n", "no" -> Answer.NO
         "l", "later" -> Answer.LATER
-        "a", "again" -> Answer.AGAIN
+        "a", "again" -> Answer.AGAIN.takeUnless { sloth.raw }
         else -> null
     }
 }
@@ -220,7 +298,7 @@ private suspend fun report(sloth: Sloth) {
         Rest.NONE -> {
             val meal = sloth.meals.last()
             when (meal.answer) {
-                Answer.YES -> say("Swallowed. The finished version is in ${home.shown}/done.")
+                Answer.YES -> say(if (sloth.raw) "Done. It is noted in ${home.shown}/done." else "Swallowed. The finished version is in ${home.shown}/done.")
                 Answer.NO -> say("Spat out. One thing fewer to think about.")
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
@@ -401,9 +479,13 @@ private val USAGE =
       peresos pile            what is still on the pile
       peresos diary           what it wrote in its diary
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
-      peresos window          open its home in a window, where you can do all of this with buttons
+      peresos window          open its home in a window, where you can do all of this with buttons; the terminal
+                              can close (--here keeps it in the terminal)
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
+      peresos gemma off       work without Ollama: it brings each item as it is (peresos gemma on to use Gemma)
+      peresos desktop on      an icon on your desktop that opens its window (off to take it away)
+      peresos autostart on    start it when you sign in, into the tray (off to stop that)
       peresos update          install its latest version, if there is a newer one (it asks GitHub)
       peresos uninstall       remove it from this computer; it asks before it deletes your pile
 

@@ -39,7 +39,7 @@ import java.nio.file.Path
 import java.time.LocalTime
 
 /** The pages of the window, in its menu. Now is the one it opens on, and the others go back to it. */
-private enum class Page { NOW, PILE, DIARY, WEAR, YOU, ABOUT }
+private enum class Page { NOW, PILE, DIARY, WEAR, YOU, SETTINGS, ABOUT }
 
 /** The height of the habitat: the least that draws the sloth with pixels of 3. */
 internal val HABITAT_HEIGHT = 144.dp
@@ -108,6 +108,7 @@ internal fun SlothScreen(
                     Page.DIARY -> Diary(sloth)
                     Page.WEAR -> Wardrobe(model)
                     Page.YOU -> You(model)
+                    Page.SETTINGS -> Settings(model, onQuit)
                     Page.ABOUT -> About(model, onQuit)
                 }
             }
@@ -125,7 +126,7 @@ internal fun SlothScreen(
 }
 
 /** The name of each page, in the menu and over the page. */
-private val PAGES = mapOf(Page.NOW to "Now", Page.PILE to "Pile", Page.DIARY to "Diary", Page.WEAR to "Wear", Page.YOU to "You", Page.ABOUT to "About")
+private val PAGES = mapOf(Page.NOW to "Now", Page.PILE to "Pile", Page.DIARY to "Diary", Page.WEAR to "Wear", Page.YOU to "You", Page.SETTINGS to "Settings", Page.ABOUT to "About")
 
 /** A tickle wiggles the sloth from side to side; a poke makes it jump once. */
 private fun shake(
@@ -201,11 +202,18 @@ private fun ColumnScope.Now(
             )
             PixelProgress(tick)
         }
-        snapshot is GraphSnapshot.Interrupted && SWALLOW in snapshot.nextNodes && sloth?.bite != null -> Bite(model, sloth.bite, sloth.why)
+        snapshot is GraphSnapshot.Interrupted && SWALLOW in snapshot.nextNodes && sloth?.bite != null -> Bite(model, sloth.bite, sloth.why, sloth.raw)
         snapshot is GraphSnapshot.Interrupted || snapshot is GraphSnapshot.Stopped -> {
             Title("Hmm.")
-            Line(model.trouble ?: "Stopped halfway.")
+            Line(model.trouble?.substringBefore(" Without Ollama:") ?: "Stopped halfway.")
             PixelButton("Try again", Ink.yellow, { model.wake() })
+            // A computer without Ollama, as a PC of work, can still use it.
+            if (model.gemma) {
+                PixelLink("Go on without Gemma") {
+                    model.useGemma(false)
+                    model.wake()
+                }
+            }
         }
         else -> Rested(model, sloth)
     }
@@ -217,10 +225,11 @@ private fun ColumnScope.Bite(
     model: SlothModel,
     bite: Bite,
     why: String?,
+    raw: Boolean,
 ) {
     // What it chewed scrolls, however long; the answers stay in sight at the bottom.
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PixelText(bite.kind.name.lowercase(), size = SMALL, color = Ink.faint)
+        PixelText(if (raw) "as it is, without Gemma" else bite.kind.name.lowercase(), size = SMALL, color = Ink.faint)
         Title(bite.title)
         Box(Modifier.fillMaxWidth().pixelBox(Ink.field, raised = false)) {
             SelectionContainer { PixelText(bite.finished.trim(), Modifier.fillMaxWidth().padding(14.dp), size = BODY) }
@@ -228,13 +237,13 @@ private fun ColumnScope.Bite(
         why?.let { Hint("Why: $it") }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PixelButton("Take it", Ink.green, { model.answer(Answer.YES) }, modifier = Modifier.weight(1f))
+        PixelButton(if (raw) "Done" else "Take it", Ink.green, { model.answer(Answer.YES) }, modifier = Modifier.weight(1f))
         PixelButton("Bin it", Ink.red, { model.answer(Answer.NO) }, modifier = Modifier.weight(1f))
         PixelButton("Later", Ink.yellow, { model.answer(Answer.LATER) }, modifier = Modifier.weight(1f))
     }
     // Used less, so smaller: chew it again, or copy it without an answer.
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-        PixelLink("Another try") { model.answer(Answer.AGAIN) }
+        if (!raw) PixelLink("Another try") { model.answer(Answer.AGAIN) }
         PixelLink("Copy") { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(bite.finished.trim()), null) }
     }
 }
@@ -361,8 +370,29 @@ private fun ColumnScope.About(
         PixelText("Feed it what you keep putting off. Once a day, Gemma prepares one item on this computer, and you say take it, bin it or later.", size = BODY)
         model.openGuide?.let { PixelButton("How it works", Ink.blue, it, small = true) }
         SelectionContainer { PixelText(GUIDE.substringBefore("#").removePrefix("https://"), size = SMALL, color = Ink.faint) }
-        if (model.canUpdate) Updating(model, onQuit)
         if (installed != null) PixelLink("Uninstall") { asking = true }
+    }
+}
+
+/** How it works on this computer: with Gemma or without, and its version. */
+@Composable
+private fun Settings(
+    model: SlothModel,
+    onQuit: (() -> Unit)?,
+) {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PixelCheck(model.gemma, "Use Gemma") { model.useGemma(!model.gemma) }
+        Hint(if (model.gemma) "Gemma prepares each item, in Ollama on this computer." else "Without Ollama, it brings each item as it is, and you say done, bin it or later.")
+        if (model.canLaunch) {
+            PixelText("OPEN IT WITHOUT A TERMINAL", Modifier.padding(top = 8.dp), size = SMALL, color = Ink.faint)
+            PixelCheck(Opener.DESKTOP in model.openers, "An icon on the desktop") { model.turn(Opener.DESKTOP, Opener.DESKTOP !in model.openers) }
+            PixelCheck(Opener.LOGIN in model.openers, "Start when I sign in") { model.turn(Opener.LOGIN, Opener.LOGIN !in model.openers) }
+            model.openerTrouble?.let { SelectionContainer { PixelText(it, size = SMALL, color = Ink.red) } }
+        }
+        if (model.canUpdate) {
+            PixelText("VERSION $VERSION", Modifier.padding(top = 8.dp), size = SMALL, color = Ink.faint)
+            Updating(model, onQuit)
+        }
     }
 }
 

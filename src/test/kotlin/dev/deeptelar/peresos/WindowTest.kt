@@ -59,12 +59,13 @@ class WindowTest {
         weather: Weather? = null,
         installed: Installed? = null,
         updater: Updater? = null,
+        launchers: Launchers? = null,
     ): SlothModel {
         val model =
             ScriptedChatModel {
                 answers.forEach { if (it is Bite) answers(it) else says(it.toString()) }
             }
-        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather, installed = installed, updater = updater)
+        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather, installed = installed, updater = updater, launchers = launchers)
     }
 
     private fun SlothModel.settle() =
@@ -263,6 +264,30 @@ class WindowTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
+    fun `settings turn Gemma off, and put it on the desktop`() {
+        val user = Files.createTempDirectory("peresos-user")
+        val launcher = user.resolve("peresos/bin/peresos").also { it.parent.createDirectories() }
+        val launchers = Launchers(launcher, "Linux", user, user.resolve("Desktop").createDirectories())
+        val model = model(launchers = launchers)
+        model.settle()
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("Settings").performClick()
+            waitForIdle()
+            onNodeWithText("Use Gemma").performClick()
+            onNodeWithText("An icon on the desktop").performClick()
+            waitForIdle()
+            assertTrue(!home.gemma(), "Gemma is off")
+            assertTrue(launchers.isOn(Opener.DESKTOP))
+            onNodeWithText("Without Ollama", substring = true).assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("settings.png").toFile())
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
     fun `the about page asks GitHub for a newer version, when told`() {
         val github = HttpClient(MockEngine { respond("""{"tag_name":"v9.0.0"}""") })
         val model = model(installed = Installed.Apt(), updater = Updater(github, from = null, current = "1.0.2"))
@@ -271,7 +296,7 @@ class WindowTest {
             setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
             onNodeWithContentDescription("Menu").performClick()
             waitForIdle()
-            onNodeWithText("About").performClick()
+            onNodeWithText("Settings").performClick()
             waitForIdle()
             assertNull(model.update, "nothing is asked before the person clicks")
             onNodeWithText("Check for updates").performClick()
