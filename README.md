@@ -73,6 +73,19 @@ peresos doctor          # checks Ollama, Gemma, its folder, the desktop, and the
 peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missing
 ```
 
+### On a work PC
+
+A PC managed by an employer or a school often has a policy that controls which apps may run, and
+Windows 11 can have one of its own, Smart App Control. PowerShell then runs in Constrained Language
+Mode, and the installer works within it: it installs Peresós and adds Feed to Peresós to the menu of
+files, but it cannot make the shortcut in the Start menu, so you open the window with
+`peresos window`. Terminals find `peresos` after you sign out and in again.
+
+The policy may also refuse apps that are not signed, and Peresós is not signed yet. Then Windows does
+not let `peresos.exe` run, and the installer says so. That choice belongs to whoever looks after the
+PC: ask them to allow Peresós, or use it on a computer of your own. Please don't try to get around
+the policy.
+
 ### Update
 
 ```bash
