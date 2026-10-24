@@ -56,7 +56,17 @@ $shortcut.TargetPath = Join-Path $dir 'peresos-window.exe'
 $shortcut.Description = 'A sloth that eats one item of your backlog a day'
 $shortcut.Save()
 
-Say "$name is installed in $dir, and in the Start menu."
+# Feed to Peresós in the menu of photos, PDFs and text files in the Explorer (under Show more options
+# on Windows 11). The window's launcher runs it, so no console opens. peresos uninstall removes it.
+$window = Join-Path $dir 'peresos-window.exe'
+foreach ($type in 'image', '.pdf', 'text') {
+    $key = "HKCU:\Software\Classes\SystemFileAssociations\$type\shell\Peresos"
+    New-Item -Path $key -Value "Feed to $name" -Force | Out-Null
+    New-ItemProperty -Path $key -Name 'Icon' -Value $window -Force | Out-Null
+    New-Item -Path "$key\command" -Value "`"$window`" feed --notify `"%1`"" -Force | Out-Null
+}
+
+Say "$name is installed in $dir, in the Start menu, and in the menu of files: Feed to $name."
 Say "Type peresos in any new terminal. To remove it: peresos uninstall"
 if ($env:PERESOS_NO_DOCTOR) { return }
 Write-Host ''

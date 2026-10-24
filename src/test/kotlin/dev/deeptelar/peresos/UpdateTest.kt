@@ -78,7 +78,7 @@ class UpdateTest {
         runBlocking<Unit> {
             val dist = Files.createTempDirectory("peresos-dist")
             dist.resolve("install.sh").writeText("echo 'Could not download the package.'\nexit 1\n")
-            val failure = assertFailsWith<IOException> { Updater(github(), from = dist.toString()).update(Installed.Apt, terminal = false) }
+            val failure = assertFailsWith<IOException> { Updater(github(), from = dist.toString()).update(Installed.Apt(), terminal = false) }
             assertContains(failure.message!!, "Could not download the package.")
             assertContains(failure.message!!, Updater.ONE_LINE)
         }

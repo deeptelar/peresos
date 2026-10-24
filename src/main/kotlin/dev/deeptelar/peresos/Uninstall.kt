@@ -20,9 +20,11 @@ internal sealed interface Installed {
     /** What leaves, as the person reads it before saying yes. */
     val shown: List<String>
 
-    /** The .deb, in /opt/peresos: apt removes it, as root. */
-    data object Apt : Installed {
-        override val shown = listOf("the package peresos, with apt, which asks for your password (sudo apt remove peresos)")
+    /** The .deb, in /opt/peresos: apt removes it, as root, and Peresós the [menus] of the file managers in the home. */
+    data class Apt(
+        val menus: List<Path> = emptyList(),
+    ) : Installed {
+        override val shown = listOf("the package peresos, with apt, which asks for your password (sudo apt remove peresos)") + menus.map { it.toString().replaceFirst(System.getProperty("user.home"), "~") }
     }
 
     /** What install.sh put in the home on Linux, or the app of macOS: these files and folders. */
@@ -39,7 +41,7 @@ internal sealed interface Installed {
     data class Windows(
         val folder: Path,
     ) : Installed {
-        override val shown = listOf(folder.toString(), "its shortcut in the Start menu", "its folder in your PATH")
+        override val shown = listOf(folder.toString(), "its shortcut in the Start menu", "its folder in your PATH", "Feed to Peresós in the menu of files")
     }
 
     /** Run with Gradle from its source: nothing is installed. */
@@ -64,15 +66,24 @@ internal fun installed(
         os.startsWith("Windows") -> path.parent?.takeIf { it.named("peresos") }?.let { Installed.Windows(it) }
         // Peresos.app/Contents/MacOS/Peresos
         os.startsWith("Mac") -> path.parent?.parent?.parent?.takeIf { it.named("Peresos.app") }?.let { app -> Installed.Files(listOf(app) + linkTo(app, userHome)) }
-        path.startsWith("/opt/peresos") -> Installed.Apt
+        path.startsWith("/opt/peresos") -> Installed.Apt(menus(userHome))
         // peresos/bin/peresos, with a menu entry that opens it.
         else ->
             path.parent?.parent?.takeIf { it.named("peresos") }?.let { app ->
                 val entry = userHome.resolve(".local/share/applications/peresos.desktop").takeIf { it.exists() && "$app/" in it.readText() }
-                Installed.Files(listOf(app) + linkTo(app, userHome) + listOfNotNull(entry))
+                Installed.Files(listOf(app) + linkTo(app, userHome) + listOfNotNull(entry) + menus(userHome))
             }
     }
 }
+
+/** Feed to Peresós in the menus of the file managers of Linux, as install.sh writes them, where they are. */
+internal fun menus(userHome: Path): List<Path> =
+    listOf(
+        ".local/share/nautilus/scripts/Feed to Peresós",
+        ".config/caja/scripts/Feed to Peresós",
+        ".local/share/nemo/actions/peresos-feed.nemo_action",
+        ".local/share/kio/servicemenus/peresos-feed.desktop",
+    ).map(userHome::resolve).filter { it.exists() && "feed --notify" in it.readText() }
 
 private fun Path.named(name: String) = fileName?.toString().equals(name, ignoreCase = true)
 
@@ -110,6 +121,7 @@ internal fun uninstall(
     // A Linux or a Mac deletes the files of a running program; it keeps them until the program quits.
     when (installed) {
         is Installed.Apt -> {
+            installed.menus.forEach { it.deleteIfExists() }
             val root = System.getProperty("user.name") == "root"
             val asRoot =
                 when {
@@ -146,6 +158,8 @@ internal fun windowsScript(
         appendLine("Wait-Process -Id $pid -Timeout 60")
         appendLine("\$dir = ${quoted(folder)}")
         appendLine("Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) \"Peres\$([char]0xF3)s.lnk\") -Force")
+        // Feed to Peresós, in the menu of files in the Explorer.
+        appendLine("foreach (\$type in 'image', '.pdf', 'text') { Remove-Item -LiteralPath \"HKCU:\\Software\\Classes\\SystemFileAssociations\\\$type\\shell\\Peresos\" -Recurse -Force }")
         appendLine("\$path = [Environment]::GetEnvironmentVariable('Path', 'User')")
         appendLine("if (\$path) { [Environment]::SetEnvironmentVariable('Path', ((\$path -split ';') | Where-Object { \$_ -and \$_.TrimEnd('\\') -ne \$dir }) -join ';', 'User') }")
         if (home != null) appendLine("Remove-Item -LiteralPath ${quoted(home)} -Recurse -Force")

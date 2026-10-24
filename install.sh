@@ -52,6 +52,48 @@ on_path() {
 	say "Open a new terminal to use peresos, or run: export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
+# Feed to Peresós in the right-click menu of files, in the file managers that are here: Nautilus
+# (GNOME) and Caja (MATE) under Scripts, Nemo (Cinnamon) and Dolphin (KDE) in the menu itself. It
+# runs the command $1, and shows the icon $2. peresos uninstall removes them.
+right_click() {
+	types="jpg;jpeg;png;gif;webp;pdf;txt;md;"
+	mimes="image/jpeg;image/png;image/gif;image/webp;application/pdf;text/plain;text/markdown;"
+	for scripts in nautilus:"$HOME/.local/share/nautilus/scripts" caja:"$HOME/.config/caja/scripts"; do
+		command -v "${scripts%%:*}" >/dev/null 2>&1 || continue
+		mkdir -p "${scripts#*:}"
+		printf '#!/bin/sh\n# Feeds the chosen files to Peresós. Added by its installer; peresos uninstall removes it.\nexec "%s" feed --notify "$@"\n' "$1" >"${scripts#*:}/Feed to Peresós"
+		chmod 755 "${scripts#*:}/Feed to Peresós"
+	done
+	if command -v nemo >/dev/null 2>&1; then
+		mkdir -p "$HOME/.local/share/nemo/actions"
+		cat >"$HOME/.local/share/nemo/actions/peresos-feed.nemo_action" <<NEMO
+[Nemo Action]
+Name=Feed to Peresós
+Comment=Put it on the pile of Peresós
+Exec=$1 feed --notify %F
+Icon-Name=$2
+Selection=notnone
+Extensions=$types
+NEMO
+	fi
+	if command -v dolphin >/dev/null 2>&1; then
+		mkdir -p "$HOME/.local/share/kio/servicemenus"
+		cat >"$HOME/.local/share/kio/servicemenus/peresos-feed.desktop" <<DOLPHIN
+[Desktop Entry]
+Type=Service
+MimeType=$mimes
+Actions=feed
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+
+[Desktop Action feed]
+Name=Feed to Peresós
+Icon=$2
+Exec=$1 feed --notify %F
+DOLPHIN
+		chmod 755 "$HOME/.local/share/kio/servicemenus/peresos-feed.desktop"
+	fi
+}
+
 install_deb() {
 	say "Downloading Peresós for Debian and Ubuntu..."
 	fetch peresos-linux-amd64.deb "$tmp/peresos.deb"
@@ -63,6 +105,7 @@ install_deb() {
 		"${PERESOS_SUDO:-sudo}" apt-get install -y "$tmp/peresos.deb"
 	fi
 	peresos=/usr/bin/peresos
+	right_click "$peresos" peresos
 	say "Peresós is installed. Remove it with: peresos uninstall (or sudo apt remove peresos)"
 }
 
@@ -87,6 +130,7 @@ Categories=Utility;
 StartupWMClass=dev-deeptelar-peresos-MainKt
 DESKTOP
 	peresos="$bin/peresos"
+	right_click "$peresos" "$app/lib/peresos.png"
 	say "Peresós is installed in $app, and in the menu of apps."
 	say "Remove it with: peresos uninstall"
 	on_path

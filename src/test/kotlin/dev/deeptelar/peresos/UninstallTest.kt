@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -33,7 +34,7 @@ class UninstallTest {
 
     @Test
     fun `in opt it is the package of apt`() {
-        assertEquals(Installed.Apt, installed("/opt/peresos/bin/peresos", "Linux", userHome))
+        assertEquals(Installed.Apt(), installed("/opt/peresos/bin/peresos", "Linux", userHome))
     }
 
     @Test
@@ -41,6 +42,22 @@ class UninstallTest {
         val app = linuxHome()
         val installed = installed("$app/bin/peresos", "Linux", userHome)
         assertEquals(Installed.Files(listOf(app, userHome.resolve(".local/bin/peresos"), userHome.resolve(".local/share/applications/peresos.desktop"))), installed)
+    }
+
+    @Test
+    fun `the menus of the file managers go too, with apt or from the home`() {
+        val nautilus = userHome.resolve(".local/share/nautilus/scripts/Feed to Peresós").createParentDirectories().apply { writeText("exec \"/usr/bin/peresos\" feed --notify \"\$@\"\n") }
+        val dolphin = userHome.resolve(".local/share/kio/servicemenus/peresos-feed.desktop").createParentDirectories().apply { writeText("Exec=/usr/bin/peresos feed --notify %F\n") }
+        // A script of the person's own, with the same name, stays.
+        userHome.resolve(".config/caja/scripts/Feed to Peresós").createParentDirectories().writeText("echo mine\n")
+        assertEquals(Installed.Apt(listOf(nautilus, dolphin)), installed("/opt/peresos/bin/peresos", "Linux", userHome))
+
+        val app = linuxHome()
+        val installed = assertIs<Installed.Files>(installed("$app/bin/peresos", "Linux", userHome))
+        assertTrue(installed.paths.containsAll(listOf(nautilus, dolphin)))
+        uninstall(installed, home = null, terminal = true)
+        assertFalse(nautilus.exists())
+        assertFalse(dolphin.exists())
     }
 
     @Test
@@ -101,6 +118,7 @@ class UninstallTest {
         assertContains(script, "Peres\$([char]0xF3)s.lnk")
         assertContains(script, "SetEnvironmentVariable('Path'")
         assertTrue(script.trim().lines().last().startsWith("for "), "the folder goes last, so a gone folder means it is all gone")
+        assertContains(script, "SystemFileAssociations\\\$type\\shell\\Peresos")
         assertFalse("o''brien/.peresos" in script)
         assertContains(windowsScript(Path.of("/c/Peresos"), home = Path.of("/c/Users/ana/.peresos"), pid = 1), "Remove-Item -LiteralPath '/c/Users/ana/.peresos' -Recurse -Force")
     }

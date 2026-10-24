@@ -265,7 +265,7 @@ class WindowTest {
     @Test
     fun `the about page asks GitHub for a newer version, when told`() {
         val github = HttpClient(MockEngine { respond("""{"tag_name":"v9.0.0"}""") })
-        val model = model(installed = Installed.Apt, updater = Updater(github, from = null, current = "1.0.2"))
+        val model = model(installed = Installed.Apt(), updater = Updater(github, from = null, current = "1.0.2"))
         model.settle()
         runComposeUiTest {
             setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
