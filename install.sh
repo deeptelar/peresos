@@ -159,7 +159,7 @@ case "$(uname -s) $(uname -m)" in
 	fi
 	;;
 "Darwin arm64") install_mac ;;
-*) fail "There is no package of Peresós for $(uname -s) on $(uname -m) yet. Build it from its source: https://github.com/deeptelar/peresos#build-it-yourself" ;;
+*) fail "There is no package of Peresós for $(uname -s) on $(uname -m) yet. Build it from its source: https://github.com/deeptelar/peresos/blob/main/CONTRIBUTING.md#build-and-test" ;;
 esac
 
 [ -z "${PERESOS_NO_DOCTOR:-}" ] || exit 0
