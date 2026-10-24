@@ -11,6 +11,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.Desktop
+import java.net.URI
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -135,6 +136,12 @@ internal class SlothModel(
             { Desktop.getDesktop().open(home.pile.done.toFile().also { it.mkdirs() }) }
         }
 
+    /** Opens the README of Peresós on GitHub in the browser, where the desktop can: how it works, at length. */
+    val openGuide: (() -> Unit)? =
+        Desktop.isDesktopSupported().takeIf { it && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE) }?.let {
+            { Desktop.getDesktop().browse(URI(GUIDE)) }
+        }
+
     /** It already ate today, and one item a day is plenty. */
     fun ateToday(sloth: Sloth?): Boolean = !hungry && sloth?.lastMeal == day
 
@@ -210,3 +217,6 @@ internal class SlothModel(
         }
     }
 }
+
+/** Where the README of Peresós is, for the About page of the window. */
+internal const val GUIDE = "https://github.com/deeptelar/peresos#readme"

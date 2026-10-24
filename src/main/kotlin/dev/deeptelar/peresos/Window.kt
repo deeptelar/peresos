@@ -38,7 +38,7 @@ import java.awt.datatransfer.StringSelection
 import java.time.LocalTime
 
 /** The pages of the window, in its menu. Now is the one it opens on, and the others go back to it. */
-private enum class Page { NOW, PILE, DIARY, WEAR, YOU }
+private enum class Page { NOW, PILE, DIARY, WEAR, YOU, ABOUT }
 
 /** The height of the habitat: the least that draws the sloth with pixels of 3. */
 internal val HABITAT_HEIGHT = 144.dp
@@ -104,7 +104,8 @@ internal fun SlothScreen(
                     Page.PILE -> Pile(model)
                     Page.DIARY -> Diary(sloth)
                     Page.WEAR -> Wardrobe(model)
-                    Page.YOU -> About(model)
+                    Page.YOU -> You(model)
+                    Page.ABOUT -> About(model)
                 }
             }
             if (menu) {
@@ -121,7 +122,7 @@ internal fun SlothScreen(
 }
 
 /** The name of each page, in the menu and over the page. */
-private val PAGES = mapOf(Page.NOW to "Now", Page.PILE to "Pile", Page.DIARY to "Diary", Page.WEAR to "Wear", Page.YOU to "You")
+private val PAGES = mapOf(Page.NOW to "Now", Page.PILE to "Pile", Page.DIARY to "Diary", Page.WEAR to "Wear", Page.YOU to "You", Page.ABOUT to "About")
 
 /** A tickle wiggles the sloth from side to side; a poke makes it jump once. */
 private fun shake(
@@ -319,7 +320,7 @@ private fun Wardrobe(model: SlothModel) {
 }
 
 @Composable
-private fun About(model: SlothModel) {
+private fun You(model: SlothModel) {
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Asking("A fact about you", "Tell it", model::learn)
         model.about.lines().filter { it.isNotBlank() }.forEach { PixelText(it, size = BODY) }
@@ -331,6 +332,20 @@ private fun About(model: SlothModel) {
         } else {
             Hint("Only the town is sent, to Open-Meteo.")
         }
+    }
+}
+
+/** What Peresós is, in two sentences, and the way to its README for the rest. */
+@Composable
+private fun About(model: SlothModel) {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Title("Peresós")
+            Hint("version $VERSION")
+        }
+        PixelText("Feed it what you keep putting off. Once a day, Gemma prepares one item on this computer, and you say take it, bin it or later.", size = BODY)
+        model.openGuide?.let { PixelButton("How it works", Ink.blue, it, small = true) }
+        SelectionContainer { PixelText(GUIDE.substringBefore("#").removePrefix("https://"), size = SMALL, color = Ink.faint) }
     }
 }
 

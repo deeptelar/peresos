@@ -119,7 +119,7 @@ bar, and under it a small window that fits the screen. At the top is its habitat
 where it hangs from its branch and plays its animations. Below it is what the sloth is doing, with
 the buttons for it: wake it, then take what Gemma prepared, bin it or leave it for later (or ask
 for another try, or copy it). The menu (☰) has the rest of what the terminal does: feed the pile,
-read the diary, dress it up, tell it about you, and quit.
+read the diary, dress it up, tell it about you, **About** (which links back to this page), and quit.
 
 ![Peresós in the tray: its face in the top bar with a yellow badge, and the window under it with a lazy bite waiting for an answer](docs/peresos-window.png)
 

@@ -63,6 +63,8 @@ class WindowTest {
     private fun SlothModel.settle() =
         runBlocking {
             while (session.snapshot.value is GraphSnapshot.Restoring || session.snapshot.value is GraphSnapshot.Running) kotlinx.coroutines.delay(10)
+            // The window reads the pile again after a run, a moment after the snapshot says it ended.
+            while (pile != home.pile.items()) kotlinx.coroutines.delay(10)
         }
 
     /** Draws the whole window, and checks that it drew something. */
@@ -156,7 +158,7 @@ class WindowTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun `the menu opens the other pages, and quits`() {
+    fun `the menu opens the other pages, the about page, and quits`() {
         home.pile.add("Decide on the gym membership")
         val model = model()
         model.settle()
@@ -176,6 +178,15 @@ class WindowTest {
             onNodeWithText("Back").performClick()
             waitForIdle()
             onNodeWithText("Wake it").assertExists()
+
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("About").performClick()
+            waitForIdle()
+            onNodeWithText("github.com/deeptelar/peresos").assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("about.png").toFile())
+            onNodeWithText("Back").performClick()
+            waitForIdle()
 
             onNodeWithContentDescription("Menu").performClick()
             waitForIdle()
