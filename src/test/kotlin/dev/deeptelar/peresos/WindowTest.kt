@@ -28,10 +28,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
 import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
 import kotlin.io.path.writeBytes
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -52,12 +54,13 @@ class WindowTest {
         vararg answers: Any,
         season: Season? = null,
         weather: Weather? = null,
+        installed: Installed? = null,
     ): SlothModel {
         val model =
             ScriptedChatModel {
                 answers.forEach { if (it is Bite) answers(it) else says(it.toString()) }
             }
-        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather)
+        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather, installed = installed)
     }
 
     private fun SlothModel.settle() =
@@ -194,6 +197,42 @@ class WindowTest {
             waitForIdle()
             assertTrue(quit)
             onNodeWithText("Pile 1").assertDoesNotExist()
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the about page uninstalls it, after asking, and forgets the pile when told`() {
+        home.pile.add("Decide on the gym membership")
+        // What install.sh puts in a home on Linux: the longest list it shows.
+        val user = Files.createTempDirectory("ana")
+        val installed = listOf(".local/share/peresos", ".local/bin/peresos", ".local/share/applications/peresos.desktop").map { user.resolve(it).createDirectories() }
+        val model = model(installed = Installed.Files(installed))
+        model.settle()
+        var quit = false
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model, onQuit = { quit = true }) } }
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("About").performClick()
+            waitForIdle()
+
+            onNodeWithText("Uninstall").performClick()
+            waitForIdle()
+            onNodeWithText("Uninstall?").assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("uninstall.png").toFile())
+            onNodeWithText("Cancel").performClick()
+            waitForIdle()
+            onNodeWithText("Uninstall?").assertDoesNotExist()
+            assertTrue(installed.all { it.exists() })
+
+            onNodeWithText("Uninstall").performClick()
+            waitForIdle()
+            onNodeWithText("Forget my pile too").performClick()
+            onNodeWithText("Uninstall").performClick()
+            waitUntil(timeoutMillis = 5_000) { quit }
+            assertTrue(installed.none { it.exists() })
+            assertFalse(home.path.exists())
         }
     }
 

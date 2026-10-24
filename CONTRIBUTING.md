@@ -73,6 +73,7 @@ does all of this on Linux, macOS and Windows for every pull request.
 | [`Habitat.kt`](src/main/kotlin/dev/deeptelar/peresos/Habitat.kt), [`Weather.kt`](src/main/kotlin/dev/deeptelar/peresos/Weather.kt), [`Poke.kt`](src/main/kotlin/dev/deeptelar/peresos/Poke.kt) | The scene around it, the season and the weather of Open-Meteo, and what it says when touched |
 | [`PixelUi.kt`](src/main/kotlin/dev/deeptelar/peresos/PixelUi.kt) | The pixel-art buttons and fields of the window |
 | `packaging/`, `install.sh`, `install.ps1` | The packages and their installers |
+| [`Uninstall.kt`](src/main/kotlin/dev/deeptelar/peresos/Uninstall.kt) | `peresos uninstall` and Uninstall in the window: how it was installed, and what goes |
 
 ## What Peresós keeps
 

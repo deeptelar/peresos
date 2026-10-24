@@ -14,6 +14,7 @@ import java.awt.Desktop
 import java.net.ConnectException
 import java.net.URI
 import java.time.LocalDate
+import kotlin.io.path.exists
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -44,6 +45,7 @@ private suspend fun run(args: Array<String>) {
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
+        "uninstall" -> uninstall()
         "--version", "version" -> println("peresos $VERSION")
         "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
         // Opened from the Finder, the app of macOS has no terminal: it opens the window.
@@ -80,12 +82,35 @@ private suspend fun doctor(
             say("The report is in $file. It has no word of your pile, your diary or what Peresós knows about you.")
             say("To report a problem, attach it to an issue: https://github.com/deeptelar/peresos/issues/new")
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                print("  Open a new issue with the report filled in, in your browser? Nothing is sent until you submit it. [y/N] ")
-                if (readlnOrNull()?.trim()?.lowercase() in setOf("y", "yes")) Desktop.getDesktop().browse(URI(doctor.issue(checks)))
+                if (yes("Open a new issue with the report filled in, in your browser? Nothing is sent until you submit it.")) Desktop.getDesktop().browse(URI(doctor.issue(checks)))
             }
         }
         if (failed > 0) exitProcess(1)
     }
+}
+
+/** `peresos uninstall`: removes Peresós the way it was installed, and its home only when the person says so. */
+private fun uninstall() {
+    val installed = installed() ?: return say("Peresós does not know how it was installed in ${System.getProperty("jpackage.app-path")}. Remove it the way you installed it.")
+    if (installed == Installed.Source) return say("Peresós runs from its source here, so nothing is installed. Delete the folder of its source to remove it.")
+    say("This removes:")
+    installed.shown.forEach { println("    $it") }
+    println()
+    if (!yes("Remove Peresós from this computer?")) return say("Nothing was removed.")
+    val forget = home.path.exists() && yes("Delete its home too, ${home.shown}, with your pile, its diary and what it finished?")
+    // Its window would keep running from the files that go.
+    val window = (if (home.path.exists()) home.window() else AutoCloseable {}) ?: return say("Its window is open. Quit Peresós from its menu, then run peresos uninstall again.")
+    window.use { uninstall(installed, home.path.takeIf { forget }, terminal = true) }
+    println()
+    say(if (installed is Installed.Windows) "Peresós leaves as soon as this command ends." else "Peresós is gone. Thank you for letting it eat your backlog.")
+    if (!forget && home.path.exists()) say("Your pile and its diary stay in ${home.shown}. Delete that folder to forget them too.")
+    say("Ollama and $modelName stay, for other apps. To free their space too: ollama rm $modelName")
+}
+
+/** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
+private fun yes(question: String): Boolean {
+    print("  $question [y/N] ")
+    return readlnOrNull()?.trim()?.lowercase() in setOf("y", "yes")
 }
 
 /** What went wrong, in words for the person, and what to do about it. */
@@ -303,6 +328,7 @@ private val USAGE =
       peresos window          open its home in a window, where you can do all of this with buttons
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
+      peresos uninstall       remove it from this computer; it asks before it deletes your pile
 
     It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer,
     except the town you give peresos place.

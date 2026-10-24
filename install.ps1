@@ -56,7 +56,7 @@ $shortcut.Description = 'A sloth that eats one item of your backlog a day'
 $shortcut.Save()
 
 Say "$name is installed in $dir, and in the Start menu."
-Say "Type peresos in any new terminal. To remove it, delete that folder and $name in the Start menu."
+Say "Type peresos in any new terminal. To remove it: peresos uninstall"
 Write-Host ''
 Say "Now $name checks what it needs:"
 Write-Host ''

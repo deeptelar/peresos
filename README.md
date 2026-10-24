@@ -58,13 +58,25 @@ irm https://raw.githubusercontent.com/deeptelar/peresos/main/install.ps1 | iex
 ```
 
 On Debian and Ubuntu it installs the `.deb` of the [latest release](https://github.com/deeptelar/peresos/releases/latest)
-with apt, so `sudo apt remove peresos` removes it; elsewhere it installs in your home, without sudo.
-You also need [Ollama](https://ollama.com/download). Then:
+with apt; elsewhere it installs in your home, without sudo. You also need
+[Ollama](https://ollama.com/download). Then:
 
 ```bash
 peresos doctor          # checks Ollama, Gemma, its folder, the desktop, and the command
 peresos doctor --fix    # pulls Gemma 4 (gemma4:12b, about 8 GB) if it is missing
 ```
+
+### Uninstall
+
+```bash
+peresos uninstall
+```
+
+Or Uninstall on the About page of its window. It removes Peresós the way it was installed: with apt
+on Debian and Ubuntu (it asks for your password), or the folders, the command and the menu entry
+that the installer put in your home. It asks before it deletes your pile, its diary and what it
+finished, in `~/.peresos`. Ollama and Gemma stay, since other apps may use them:
+`ollama rm gemma4:12b` frees Gemma's 8 GB.
 
 ### Build it yourself
 

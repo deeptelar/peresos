@@ -57,7 +57,8 @@ jobs:
           Compress-Archive build/jpackage/peresos build/dist/peresos-windows-x64.zip
 
       # Each installer, from the files just built: the command must run from the PATH, and the doctor
-      # must get to its report. Ollama is not there, so the doctor says so and exits with 1.
+      # must get to its report. Ollama is not there, so the doctor says so and exits with 1. Then
+      # peresos uninstall must remove all of it, and the pile only when told.
       - name: Install with apt
         if: runner.os == 'Linux'
         run: |
@@ -65,7 +66,9 @@ jobs:
           peresos --version
           peresos doctor --report </dev/null || true
           ls ~/.peresos/logs/doctor-*.md
-          sudo apt-get remove -y peresos
+          printf 'y\nn\n' | peresos uninstall
+          if dpkg -s peresos >/dev/null 2>&1 || [ -e /usr/bin/peresos ] || [ -e /opt/peresos ]; then echo "apt did not remove it"; exit 1; fi
+          ls ~/.peresos/logs/doctor-*.md
       - name: Install in the home
         if: runner.os != 'Windows'
         run: |
@@ -74,6 +77,10 @@ jobs:
           ~/.local/bin/peresos feed "Try the installer"
           ~/.local/bin/peresos pile
           cat ~/.peresos/logs/doctor-*.md 2>/dev/null | tail -20 || true
+          printf 'y\ny\n' | ~/.local/bin/peresos uninstall
+          for gone in ~/.local/bin/peresos ~/.local/share/peresos ~/.local/share/applications/peresos.desktop ~/Applications/Peresos.app ~/.peresos; do
+            [ ! -e "$gone" ] && [ ! -L "$gone" ] || { echo "$gone is still there"; exit 1; }
+          done
       - name: Install on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -85,7 +92,16 @@ jobs:
           peresos pile
           peresos doctor --report
           Get-ChildItem "$env:USERPROFILE\.peresos\logs\doctor-*.md" | Get-Content
-          Test-Path "$([Environment]::GetFolderPath('Programs'))\Peres$([char]0xF3)s.lnk"
+          $shortcut = "$([Environment]::GetFolderPath('Programs'))\Peres$([char]0xF3)s.lnk"
+          if (-not (Test-Path $shortcut)) { throw "No shortcut in the Start menu" }
+          "y", "n" | peresos uninstall
+          # PowerShell removes it once peresos has quit.
+          $dir = "$env:LOCALAPPDATA\Programs\Peresos"
+          for ($i = 0; $i -lt 30 -and (Test-Path $dir); $i++) { Start-Sleep 1 }
+          if (Test-Path $dir) { throw "$dir is still there" }
+          if (Test-Path $shortcut) { throw "The shortcut is still there" }
+          if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $dir) { throw "$dir is still in the PATH" }
+          if (-not (Test-Path "$env:USERPROFILE\.peresos\pile.md")) { throw "The pile went, though it was kept" }
           exit 0
 
       - uses: actions/upload-artifact@v7

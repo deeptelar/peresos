@@ -7,10 +7,13 @@ import dev.deeptelar.telar.CompiledGraph
 import dev.deeptelar.telar.GraphSession
 import dev.deeptelar.telar.GraphSnapshot
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.awt.Desktop
+import java.io.IOException
 import java.net.URI
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
@@ -25,6 +28,8 @@ import kotlin.time.Duration.Companion.seconds
  * @param today the day, as `2026-10-23`.
  * @param meteo asks for the weather of the person's town, if they chose one. `null` never asks.
  * @param season and [weather] show this season or weather instead of the real one, to try them.
+ * @param installed how it was installed, for Uninstall on the About page, which it lacks when this
+ *   is `null`: run from its source, or from a place it does not know.
  */
 internal class SlothModel(
     private val home: Home,
@@ -35,6 +40,7 @@ internal class SlothModel(
     private val meteo: OpenMeteo? = null,
     season: Season? = null,
     weather: Weather? = null,
+    val installed: Installed? = installed()?.takeIf { it != Installed.Source },
 ) {
     val session: GraphSession<Sloth> = GraphSession(graph, home.config, scope)
 
@@ -141,6 +147,47 @@ internal class SlothModel(
         Desktop.isDesktopSupported().takeIf { it && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE) }?.let {
             { Desktop.getDesktop().browse(URI(GUIDE)) }
         }
+
+    /** Its home, as the person would type it, to say what Uninstall can forget. */
+    val homeShown: String = home.shown
+
+    /** Uninstall was pressed, and it removes itself. */
+    var leaving: Boolean by mutableStateOf(false)
+        private set
+
+    /** It removed itself, and the window says goodbye before it quits. */
+    var gone: Boolean by mutableStateOf(false)
+        private set
+
+    /** Why it could not remove itself, and what the person can do instead. */
+    var stayTrouble: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Removes Peresós from this computer, and its home too when the person [forget]s it, then quits
+     * with [onGone] after a goodbye. On Windows the files go once it has quit.
+     */
+    fun uninstall(
+        forget: Boolean,
+        onGone: () -> Unit,
+    ) {
+        val installed = installed ?: return
+        leaving = true
+        stayTrouble = null
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { uninstall(installed, home.path.takeIf { forget }, terminal = false) }
+                gone = true
+                delay(2.seconds)
+                onGone()
+            } catch (e: IOException) {
+                home.log.error("Uninstall", e)
+                stayTrouble = e.message
+            } finally {
+                leaving = false
+            }
+        }
+    }
 
     /** It already ate today, and one item a day is plenty. */
     fun ateToday(sloth: Sloth?): Boolean = !hungry && sloth?.lastMeal == day
