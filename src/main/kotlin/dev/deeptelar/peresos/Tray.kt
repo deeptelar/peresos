@@ -80,7 +80,7 @@ private fun app(
         val model =
             remember {
                 val graph = sloth(model(client), home.pile, hungry, diarist = model(client, think = false), about = home::about)
-                SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather)
+                SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather, updater = Updater(client))
             }
         var shown by remember { mutableStateOf(true) }
         // When the window hid because the person pressed the tray icon, that click must not show it again.

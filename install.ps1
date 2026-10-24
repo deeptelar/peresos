@@ -6,6 +6,7 @@
 # menu, where it opens its window. Then it runs peresos doctor, which checks Ollama and Gemma.
 #
 # PERESOS_FROM takes the files from another address or a folder, to try a build before a release.
+# Update in the window of Peresós runs this script again, with PERESOS_NO_DOCTOR=1.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # the progress bar makes Invoke-WebRequest many times slower
 
@@ -57,6 +58,7 @@ $shortcut.Save()
 
 Say "$name is installed in $dir, and in the Start menu."
 Say "Type peresos in any new terminal. To remove it: peresos uninstall"
+if ($env:PERESOS_NO_DOCTOR) { return }
 Write-Host ''
 Say "Now $name checks what it needs:"
 Write-Host ''

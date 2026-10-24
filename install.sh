@@ -9,6 +9,8 @@
 # with the command in ~/.local/bin. Then it runs peresos doctor, which checks Ollama and Gemma.
 #
 # PERESOS_FROM takes the files from another address or a folder, to try a build before a release.
+# peresos update runs this script again; from its window it sets PERESOS_SUDO=pkexec, which asks for
+# the password in a dialog, and PERESOS_NO_DOCTOR=1.
 set -eu
 
 from="${PERESOS_FROM:-https://github.com/deeptelar/peresos/releases/latest/download}"
@@ -58,7 +60,7 @@ install_deb() {
 	if [ "$(id -u)" = 0 ]; then
 		apt-get install -y "$tmp/peresos.deb"
 	else
-		sudo apt-get install -y "$tmp/peresos.deb"
+		"${PERESOS_SUDO:-sudo}" apt-get install -y "$tmp/peresos.deb"
 	fi
 	peresos=/usr/bin/peresos
 	say "Peresós is installed. Remove it with: peresos uninstall (or sudo apt remove peresos)"
@@ -116,6 +118,7 @@ case "$(uname -s) $(uname -m)" in
 *) fail "There is no package of Peresós for $(uname -s) on $(uname -m) yet. Build it from its source: https://github.com/deeptelar/peresos#build-it-yourself" ;;
 esac
 
+[ -z "${PERESOS_NO_DOCTOR:-}" ] || exit 0
 echo
 say "Now Peresós checks what it needs:"
 echo

@@ -18,6 +18,9 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import dev.deeptelar.telar.GraphSnapshot
 import dev.deeptelar.telar.test.ScriptedChatModel
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,12 +58,13 @@ class WindowTest {
         season: Season? = null,
         weather: Weather? = null,
         installed: Installed? = null,
+        updater: Updater? = null,
     ): SlothModel {
         val model =
             ScriptedChatModel {
                 answers.forEach { if (it is Bite) answers(it) else says(it.toString()) }
             }
-        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather, installed = installed)
+        return SlothModel(home, sloth(model, home.pile, about = home::about), scope, today = { "2026-10-23" }, season = season, weather = weather, installed = installed, updater = updater)
     }
 
     private fun SlothModel.settle() =
@@ -233,6 +237,28 @@ class WindowTest {
             waitUntil(timeoutMillis = 5_000) { quit }
             assertTrue(installed.none { it.exists() })
             assertFalse(home.path.exists())
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the about page asks GitHub for a newer version, when told`() {
+        val github = HttpClient(MockEngine { respond("""{"tag_name":"v9.0.0"}""") })
+        val model = model(installed = Installed.Apt, updater = Updater(github, from = null, current = "1.0.2"))
+        model.settle()
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("About").performClick()
+            waitForIdle()
+            assertNull(model.update, "nothing is asked before the person clicks")
+            onNodeWithText("Check for updates").performClick()
+            waitUntil(timeoutMillis = 5_000) { model.update.let { it != null && it != Update.Checking } }
+            assertIs<Update.Available>(model.update, model.update.toString())
+            onNodeWithText("Peresós 9.0.0 is out.").assertExists()
+            onNodeWithText("Update").assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("update.png").toFile())
         }
     }
 

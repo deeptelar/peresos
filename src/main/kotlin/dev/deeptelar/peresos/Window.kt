@@ -353,7 +353,31 @@ private fun ColumnScope.About(
         PixelText("Feed it what you keep putting off. Once a day, Gemma prepares one item on this computer, and you say take it, bin it or later.", size = BODY)
         model.openGuide?.let { PixelButton("How it works", Ink.blue, it, small = true) }
         SelectionContainer { PixelText(GUIDE.substringBefore("#").removePrefix("https://"), size = SMALL, color = Ink.faint) }
+        if (model.canUpdate) Updating(model, onQuit)
         if (installed != null) PixelLink("Uninstall") { asking = true }
+    }
+}
+
+/** Check for updates, and what GitHub said. */
+@Composable
+private fun Updating(
+    model: SlothModel,
+    onQuit: (() -> Unit)?,
+) {
+    when (val update = model.update) {
+        null -> PixelLink("Check for updates", onClick = model::checkUpdate)
+        Update.Checking -> Hint("Asking GitHub for the latest version...")
+        Update.Latest -> Hint("This is the latest version.")
+        is Update.Available ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PixelText(update.news, Modifier.weight(1f), size = BODY)
+                PixelButton("Update", Ink.green, { model.installUpdate { onQuit?.invoke() } }, small = true)
+            }
+        Update.Installing -> Hint("Updating. It opens again when it is done.")
+        is Update.Failed -> {
+            SelectionContainer { PixelText(update.message, size = SMALL, color = Ink.red) }
+            PixelLink("Try again", onClick = model::checkUpdate)
+        }
     }
 }
 

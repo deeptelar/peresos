@@ -11,6 +11,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.delay
 import java.awt.Desktop
+import java.io.IOException
 import java.net.ConnectException
 import java.net.URI
 import java.time.LocalDate
@@ -46,6 +47,7 @@ private suspend fun run(args: Array<String>) {
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
         "uninstall" -> uninstall()
+        "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")
         "window" -> window(home, hungry = "--hungry" in args, season = option(args, "season", Season.entries), weather = option(args, "weather", Weather.entries))
         // Opened from the Finder, the app of macOS has no terminal: it opens the window.
@@ -105,6 +107,34 @@ private fun uninstall() {
     say(if (installed is Installed.Windows) "Peresós leaves as soon as this command ends." else "Peresós is gone. Thank you for letting it eat your backlog.")
     if (!forget && home.path.exists()) say("Your pile and its diary stay in ${home.shown}. Delete that folder to forget them too.")
     say("Ollama and $modelName stay, for other apps. To free their space too: ollama rm $modelName")
+}
+
+/** `peresos update`: asks GitHub for the latest release, and installs it the way Peresós was installed, if the person says so. */
+private suspend fun update(updater: Updater) {
+    val installed = installed() ?: return say("Peresós does not know how it was installed in ${System.getProperty("jpackage.app-path")}. Install it again: ${Updater.ONE_LINE}")
+    if (installed == Installed.Source) return say("Peresós runs from its source here: update it with git pull.")
+    val latest =
+        try {
+            updater.latest()
+        } catch (e: IOException) {
+            return say("Could not ask GitHub for the latest version: ${e.message}")
+        }
+    if (latest == null) {
+        if (!yes("Install Peresós from ${updater.from} over ${updater.current}?")) return say("Nothing changed.")
+    } else {
+        if (!isNewer(latest, updater.current)) return say("Peresós ${updater.current} is the latest version.")
+        say("Peresós $latest is out, and you have ${updater.current}. What is new: ${Updater.RELEASES}")
+        if (!yes("Update it now?")) return say("Nothing changed. Update it whenever you like: peresos update")
+    }
+    // Its window would keep running from the files that change.
+    val window = home.window() ?: return say("Its window is open. Quit Peresós from its menu, then run peresos update again.")
+    window.use {
+        try {
+            updater.update(installed, terminal = true)
+        } catch (e: IOException) {
+            return say(e.message.orEmpty())
+        }
+    }
 }
 
 /** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
@@ -328,8 +358,9 @@ private val USAGE =
       peresos window          open its home in a window, where you can do all of this with buttons
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
+      peresos update          install its latest version, if there is a newer one (it asks GitHub)
       peresos uninstall       remove it from this computer; it asks before it deletes your pile
 
     It runs on $modelName in your local Ollama (PERESOS_MODEL changes it). Nothing leaves your computer,
-    except the town you give peresos place.
+    except the town you give peresos place, and peresos update, which asks GitHub for the latest version.
     """.trimIndent()
