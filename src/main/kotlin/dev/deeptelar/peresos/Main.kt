@@ -48,6 +48,7 @@ private suspend fun run(args: Array<String>) {
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
         "doctor" -> doctor(fix = "--fix" in args, report = "--report" in args)
+        "gemma" -> gemma(args.getOrNull(1))
         "uninstall" -> uninstall()
         "update" -> HttpClient(CIO) { engine { requestTimeout = 0 } }.use { client -> update(Updater(client)) }
         "--version", "version" -> println("peresos $VERSION")
@@ -58,7 +59,7 @@ private suspend fun run(args: Array<String>) {
             val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Answer it there.")
             awake.use {
                 HttpClient(CIO).use { client ->
-                    wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about), lazy = "--lazy" in args)
+                    wake(sloth(model(client), pile, hungry = "--hungry" in args, diarist = model(client, think = false), about = home::about, gemma = home::gemma), lazy = "--lazy" in args)
                 }
             }
         }
@@ -139,6 +140,23 @@ private suspend fun update(updater: Updater) {
     }
 }
 
+/** `peresos gemma on|off`: whether it prepares items with Gemma, or brings them as they are, for a computer without Ollama. */
+private fun gemma(choice: String?) {
+    when (choice) {
+        "on" -> home.useGemma(true)
+        "off" -> home.useGemma(false)
+        null -> Unit
+        else -> return say("peresos gemma on, or peresos gemma off.")
+    }
+    say(
+        if (home.gemma()) {
+            "Peresós uses $modelName in your Ollama: it prepares the finished version of each item. Without Ollama: peresos gemma off"
+        } else {
+            "Peresós works without Gemma: it brings you each item as it is, and you say done, bin it or later. With Ollama: peresos gemma on"
+        },
+    )
+}
+
 /** Asks [question] in the terminal: only y or yes is a yes, and no answer is a no. */
 private fun yes(question: String): Boolean {
     print("  $question [y/N] ")
@@ -149,7 +167,7 @@ private fun yes(question: String): Boolean {
 internal fun trouble(cause: Throwable): String {
     val chain = generateSequence(cause) { it.cause }.toList()
     return when {
-        chain.any { it is ConnectException } -> "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing."
+        chain.any { it is ConnectException } -> "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing. Without Ollama: peresos gemma off"
         chain.any { it.message.orEmpty().let { message -> "not found" in message && Home.modelName in message } } ->
             "Ollama has no ${Home.modelName} yet. peresos doctor --fix pulls it."
         else -> "Something went wrong: ${chain.last().message ?: chain.last()::class.simpleName}"
@@ -196,16 +214,17 @@ private fun askFor(sloth: Sloth): Answer? {
     val bite = checkNotNull(sloth.bite)
     println()
     sloth.why?.let { say("It picked the easiest one: $it") }
-    say("It chewed this one: ${bite.title}  (${bite.kind.name.lowercase()})")
+    // Without Gemma it brings the item as it is: there is no other version to try.
+    say(if (sloth.raw) "It brought you this one, unchewed:" else "It chewed this one: ${bite.title}  (${bite.kind.name.lowercase()})")
     println()
     wrap(bite.finished).forEach { println("    $it") }
     println()
-    print("  [y] take it   [n] bin it   [l] later   [a] another try   (Enter: decide another day)  ")
+    print(if (sloth.raw) "  [y] done   [n] bin it   [l] later   (Enter: decide another day)  " else "  [y] take it   [n] bin it   [l] later   [a] another try   (Enter: decide another day)  ")
     return when (readlnOrNull()?.trim()?.lowercase()) {
-        "y", "yes" -> Answer.YES
+        "y", "yes", "d", "done" -> Answer.YES
         "n", "no" -> Answer.NO
         "l", "later" -> Answer.LATER
-        "a", "again" -> Answer.AGAIN
+        "a", "again" -> Answer.AGAIN.takeUnless { sloth.raw }
         else -> null
     }
 }
@@ -220,7 +239,7 @@ private suspend fun report(sloth: Sloth) {
         Rest.NONE -> {
             val meal = sloth.meals.last()
             when (meal.answer) {
-                Answer.YES -> say("Swallowed. The finished version is in ${home.shown}/done.")
+                Answer.YES -> say(if (sloth.raw) "Done. It is noted in ${home.shown}/done." else "Swallowed. The finished version is in ${home.shown}/done.")
                 Answer.NO -> say("Spat out. One thing fewer to think about.")
                 Answer.LATER -> say("Put back at the bottom of the pile.")
                 Answer.AGAIN -> Unit // never a meal: the item went back to be chewed
@@ -404,6 +423,7 @@ private val USAGE =
       peresos window          open its home in a window, where you can do all of this with buttons
       peresos place "town"    show that town's weather in the window, from Open-Meteo (peresos place nothing to stop)
       peresos doctor          check that it has all it needs (--fix pulls Gemma, --report writes a file for an issue)
+      peresos gemma off       work without Ollama: it brings each item as it is (peresos gemma on to use Gemma)
       peresos update          install its latest version, if there is a newer one (it asks GitHub)
       peresos uninstall       remove it from this computer; it asks before it deletes your pile
 

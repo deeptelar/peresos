@@ -71,6 +71,7 @@ enum class Rest { NONE, ALREADY_ATE, EMPTY_PILE }
  * @property why why it picked [item], on a lazy wake.
  * @property lastLazy the item the last lazy wake picked: the next one picks another, so an item
  * answered with "later" does not come back every time.
+ * @property raw [bite] is the item as it was, brought without Gemma: there is nothing to try again.
  */
 @Serializable
 data class Sloth(
@@ -89,6 +90,7 @@ data class Sloth(
     val lazy: Boolean = false,
     val why: String? = null,
     val lastLazy: String? = null,
+    val raw: Boolean = false,
 ) {
     /** How round it is: one more for every item that left the pile for good. */
     val roundness: Int get() = meals.count { it.answer != Answer.LATER }
@@ -124,6 +126,9 @@ private const val VOICE =
  * @param hungry eat even if it already ate today, for a demo.
  * @param about reads what the person told it about themselves, such as which days they work from home,
  * each time it chews: the window lets them add facts while it runs.
+ * @param gemma whether it uses Gemma, read at every step: without it, a lazy wake picks the shortest
+ * item, chewing brings the item as it is, and the diary is written from the sloth's own lines. For a
+ * computer without Ollama, as a PC of work that may not install it.
  */
 fun sloth(
     model: ChatModel,
@@ -131,6 +136,7 @@ fun sloth(
     hungry: Boolean = false,
     diarist: ChatModel = model,
     about: () -> String = { "" },
+    gemma: () -> Boolean = { true },
 ): CompiledGraph<Sloth> =
     StateGraph<Sloth> {
         val wake =
@@ -163,6 +169,7 @@ fun sloth(
                     // Another item than last time, unless there is no other.
                     val choices = items.filter { it != sloth.lastLazy }.ifEmpty { items }.take(LOOK_AT)
                     if (choices.size == 1) return@node Pick(1, "It is the only one there.") to choices
+                    if (!gemma()) return@node Pick(choices.indexOf(choices.minBy { shown(it).length }) + 1, "It is the shortest one. Short things are quick to eat.") to choices
                     val pick = model.ask<Pick>(pickPrompt(choices), system = VOICE)
                     check(pick.number in 1..choices.size) { "Gemma picked number ${pick.number} of ${choices.size}." }
                     pick to choices
@@ -177,12 +184,14 @@ fun sloth(
             node(
                 "chew",
                 work = { sloth ->
+                    val item = checkNotNull(sloth.item)
+                    if (!gemma()) return@node raw(item)
                     // The photos and PDFs of the item are read from the pile here, never kept in the checkpoint.
-                    val plate = pile.serve(checkNotNull(sloth.item))
+                    val plate = pile.serve(item)
                     model.ask<Bite>(chewPrompt(sloth, plate.text, about()), system = if (sloth.lazy) CHEF + LAZY else CHEF, attachments = plate.attachments)
                 },
                 retry = Retry(attempts = 2),
-            ) { sloth, bite -> sloth.copy(bite = bite) }
+            ) { sloth, bite -> sloth.copy(bite = bite, raw = !gemma()) }
 
         val swallow =
             node(SWALLOW) { sloth ->
@@ -214,7 +223,7 @@ fun sloth(
         val diary =
             node(
                 "diary",
-                work = { sloth -> diarist.chat(diaryPrompt(sloth), system = VOICE) },
+                work = { sloth -> if (sloth.raw) ownLine(sloth) else diarist.chat(diaryPrompt(sloth), system = VOICE) },
             ) { sloth, line -> sloth.copy(diary = sloth.diary + DiaryEntry(sloth.today, line.trim()), item = null) }
 
         START then wake
@@ -230,6 +239,54 @@ fun sloth(
         conditionalEdge(swallow, targets = setOf(chew, diary)) { sloth -> if (sloth.bite == null) chew else diary }
         diary then NodeRef.END
     }.compile()
+
+/** The item as it is, for a wake without Gemma: its first line is the title, and the whole of it what to do. */
+private fun raw(item: String): Bite {
+    val text = shown(item).trim()
+    val first = text.lines().first().trim()
+    return Bite(Kind.TASK, if (first.length <= 48) first else first.take(47).trimEnd() + "…", text)
+}
+
+/** A line of the diary without Gemma: the sloth's own, picked by the day, so a day keeps its line. */
+private fun ownLine(sloth: Sloth): String {
+    val meal = sloth.meals.last()
+    val lines =
+        when {
+            sloth.emptied -> OWN_EMPTIED
+            meal.answer == Answer.YES -> OWN_DONE
+            meal.answer == Answer.NO -> OWN_BINNED
+            else -> OWN_LATER
+        }
+    return lines[Math.floorMod((sloth.today + meal.title).hashCode(), lines.size)].replace("{title}", meal.title)
+}
+
+private val OWN_DONE =
+    listOf(
+        "You did \"{title}\" yourself. I watched. Watching is also work, if you do it slowly.",
+        "\"{title}\" is done, and I did not lift a claw. A fine day.",
+        "I carried \"{title}\" all the way to you. You did the rest. Teamwork.",
+        "\"{title}\": gone. I celebrated with a nap.",
+    )
+
+private val OWN_BINNED =
+    listOf(
+        "We spat out \"{title}\". Not every leaf is worth chewing.",
+        "\"{title}\" went in the bin. Deciding not to is also finishing.",
+        "Goodbye, \"{title}\". I will not miss you, and neither will you.",
+    )
+
+private val OWN_LATER =
+    listOf(
+        "\"{title}\" went back under the pile. It will keep. Most things do.",
+        "Later, said you. Later, said I. We agree on everything.",
+        "I put \"{title}\" back, slowly. There is always tomorrow, and the day after.",
+    )
+
+private val OWN_EMPTIED =
+    listOf(
+        "The pile is empty. I ate everything, without chewing once. Now I sleep on top of my branch.",
+        "Nothing left to eat. I shall nap on my branch until you feed me again.",
+    )
 
 private fun chewPrompt(sloth: Sloth, item: String, about: String): String {
     val tried =

@@ -86,13 +86,24 @@ class DoctorTest {
         }
 
     @Test
+    fun `without Gemma it needs no Ollama`() =
+        runBlocking {
+            home.useGemma(false)
+            val checks = doctor(client = ollama(running = false), machine = machine(installed = false)).examine()
+
+            assertEquals(Verdict.OK, checks.of("Gemma").verdict)
+            assertTrue(checks.none { it.name == "Ollama" || it.name == "Gemma answers" })
+            assertTrue(checks.none { it.verdict == Verdict.FAIL })
+        }
+
+    @Test
     fun `without Ollama it says how to get it, and checks nothing that needs it`() =
         runBlocking {
             val notInstalled = doctor(ollama(running = false), machine = machine(installed = false)).examine()
             val stopped = doctor(ollama(running = false)).examine()
             val stoppedOnWindows = doctor(ollama(running = false), machine = machine(os = "Windows 11")).examine()
 
-            assertEquals(Check("Ollama", Verdict.FAIL, "not installed", "Install it from https://ollama.com/download, then run peresos doctor --fix."), notInstalled.of("Ollama"))
+            assertEquals(Check("Ollama", Verdict.FAIL, "not installed", "Install it from https://ollama.com/download, then run peresos doctor --fix. Or use Peresós without it: peresos gemma off"), notInstalled.of("Ollama"))
             assertEquals("Start it: ollama serve (or sudo systemctl start ollama)", stopped.of("Ollama").fix)
             assertEquals("Open the Ollama app, or run: ollama serve", stoppedOnWindows.of("Ollama").fix)
             assertFalse(stopped.any { it.name.startsWith("Gemma") })
@@ -193,7 +204,7 @@ class DoctorTest {
     @Test
     fun `the person reads why it stopped, not a stack trace`() {
         assertEquals(
-            "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing.",
+            "Peresós could not reach Gemma. Is Ollama running? peresos doctor says what is missing. Without Ollama: peresos gemma off",
             trouble(IllegalStateException("Node 'chew' failed", ConnectException("Connection refused"))),
         )
         assertEquals("Ollama has no ${Home.modelName} yet. peresos doctor --fix pulls it.", trouble(IllegalStateException("model '${Home.modelName}' not found")))

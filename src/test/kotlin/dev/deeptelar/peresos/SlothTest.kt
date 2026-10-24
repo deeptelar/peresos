@@ -10,6 +10,7 @@ import dev.deeptelar.telar.MemoryCheckpointer
 import dev.deeptelar.telar.test.ScriptedChatModel
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -159,6 +160,37 @@ class SlothTest {
                 .invoke(Sloth("2026-10-23"), config())
 
             assertTrue("I work from home on Tuesdays" in model.requests.single().messages.last().text)
+        }
+
+    @Test
+    fun `without Gemma it brings the item as it is, and writes its own diary`() =
+        runTest {
+            val pile = MemoryPile("Reply to Marta about Friday\nShe asked if dinner still works", "Decide on the gym")
+            val model = ScriptedChatModel { }
+            val graph = sloth(model, pile, gemma = { false })
+            val config = config()
+
+            val waiting = assertIs<GraphResult.Interrupted<Sloth>>(graph.invoke(Sloth("2026-10-23"), config))
+            assertTrue(waiting.state.raw)
+            assertEquals("Reply to Marta about Friday", waiting.state.bite?.title)
+            assertEquals("Reply to Marta about Friday\nShe asked if dinner still works", waiting.state.bite?.finished)
+
+            val done = assertIs<GraphResult.Completed<Sloth>>(graph.resume(config) { it.copy(answer = Answer.YES) })
+            assertEquals(listOf("Decide on the gym"), pile.items)
+            assertEquals(1, done.state.roundness)
+            assertContains(done.state.diary.single().text, "Reply to Marta about Friday")
+            assertTrue(model.requests.isEmpty(), "no model is asked")
+        }
+
+    @Test
+    fun `without Gemma a lazy wake picks the shortest item`() =
+        runTest {
+            val pile = MemoryPile("Sort out the photos of the whole summer holiday", "Call Ana", "Decide on the gym")
+            val result = sloth(ScriptedChatModel { }, pile, gemma = { false }).invoke(Sloth("2026-10-23", lazy = true), config())
+
+            assertIs<GraphResult.Interrupted<Sloth>>(result)
+            assertEquals("Call Ana", result.state.item)
+            assertEquals("It is the shortest one. Short things are quick to eat.", result.state.why)
         }
 
     @Test

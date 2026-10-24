@@ -55,6 +55,15 @@ internal class SlothModel(
     var about: String by mutableStateOf(home.about())
         private set
 
+    /** Whether it prepares items with Gemma, or brings them as they are, without Ollama. */
+    var gemma: Boolean by mutableStateOf(home.gemma())
+        private set
+
+    fun useGemma(on: Boolean) {
+        home.useGemma(on)
+        gemma = on
+    }
+
     /** A terminal has it awake, so the window waits. */
     var busy: Boolean by mutableStateOf(false)
         private set
@@ -126,6 +135,7 @@ internal class SlothModel(
         pile = home.pile.items()
         wearing = home.wearing()
         about = home.about()
+        gemma = home.gemma()
         if (home.place() != place) {
             place = home.place()
             scope.launch { lookOutside() }

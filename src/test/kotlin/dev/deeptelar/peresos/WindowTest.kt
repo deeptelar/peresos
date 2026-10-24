@@ -271,7 +271,7 @@ class WindowTest {
             setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
             onNodeWithContentDescription("Menu").performClick()
             waitForIdle()
-            onNodeWithText("About").performClick()
+            onNodeWithText("Settings").performClick()
             waitForIdle()
             assertNull(model.update, "nothing is asked before the person clicks")
             onNodeWithText("Check for updates").performClick()

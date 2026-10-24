@@ -48,6 +48,7 @@ class Home(val path: Path) {
     private val placeFile = path.resolve("place")
     private val windowFile = path.resolve("window.lock")
     private val callFile = path.resolve("window.call")
+    private val gemmaFile = path.resolve("gemma")
 
     /** What you told it about yourself, one fact per line. */
     fun about(): String = aboutFile.readTextOrEmpty()
@@ -84,8 +85,16 @@ class Home(val path: Path) {
         placeFile.writeText(place?.let { "${it.name}\n${it.latitude}\n${it.longitude}\n" } ?: "")
     }
 
+    /** Whether it uses Gemma: yes, unless the person turned it off, on a computer without Ollama. */
+    fun gemma(): Boolean = gemmaFile.readTextOrEmpty().trim() != "off"
+
+    fun useGemma(on: Boolean) {
+        path.createDirectories()
+        gemmaFile.writeText(if (on) "on\n" else "off\n")
+    }
+
     /** Changes when any file of the home changes, so a window can tell that the terminal fed, dressed or woke it. */
-    fun version(): List<Long> = listOf(pile.file, aboutFile, wearFile, placeFile, path.resolve("checkpoints/peresos.json")).map { it.toFile().lastModified() }
+    fun version(): List<Long> = listOf(pile.file, aboutFile, wearFile, placeFile, gemmaFile, path.resolve("checkpoints/peresos.json")).map { it.toFile().lastModified() }
 
     /** It ate the whole pile, so it sleeps on top of its branch until there is something new. */
     fun isFull(sloth: Sloth?): Boolean = sloth != null && sloth.roundness > 0 && pile.items().isEmpty()

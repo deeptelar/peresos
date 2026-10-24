@@ -84,7 +84,7 @@ private fun app(
         val scope = rememberCoroutineScope()
         val model =
             remember {
-                val graph = sloth(model(client), home.pile, hungry, diarist = model(client, think = false), about = home::about)
+                val graph = sloth(model(client), home.pile, hungry, diarist = model(client, think = false), about = home::about, gemma = home::gemma)
                 SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather, updater = Updater(client))
             }
         var shown by remember { mutableStateOf(true) }
