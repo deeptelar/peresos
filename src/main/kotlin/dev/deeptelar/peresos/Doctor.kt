@@ -263,11 +263,11 @@ internal class Doctor(
     }
 
     /**
-     * The page of a new issue on GitHub with the report of [checks] filled in. It holds as many of
+     * The page of a new issue on GitHub, in the form of a bug report, with the report of [checks] filled in. It holds as many of
      * the last failures as a browser's address bar takes, the newest first; the file of the report has more.
      */
     fun issue(checks: List<Check>): String {
-        val urls = listOf(3 to 25, 2 to 20, 1 to 20, 1 to 10, 1 to 3, 0 to 0).map { (failures, lines) -> "$ISSUES?title=${encode("Peresós: ")}&body=${encode(report(checks, failures, lines))}" }
+        val urls = listOf(3 to 25, 2 to 20, 1 to 20, 1 to 10, 1 to 3, 0 to 0).map { (failures, lines) -> "$ISSUES?template=bug_report.yml&title=${encode("Peresós: ")}&report=${encode(report(checks, failures, lines))}" }
         return urls.firstOrNull { it.length <= MAX_URL } ?: urls.last()
     }
 
