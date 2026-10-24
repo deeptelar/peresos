@@ -8,6 +8,7 @@ import io.ktor.client.HttpClient
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.net.URI
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Path
@@ -29,6 +30,9 @@ class Home(val path: Path) {
     val shown: String = path.toString().replaceFirst(System.getProperty("user.home"), "~")
 
     val pile: FilePile = FilePile(path.resolve("pile.md"), path.resolve("done"))
+
+    /** What went wrong, for `peresos doctor --report`. */
+    val log: Log = Log(path.resolve("logs"))
 
     /** The one thread of the sloth, saved after every step, and paused before it swallows. */
     val config: GraphConfig<Sloth> =
@@ -126,6 +130,9 @@ class Home(val path: Path) {
 
         val modelName: String = System.getenv("PERESOS_MODEL") ?: "gemma4:12b"
 
+        /** Where Ollama listens: `OLLAMA_HOST`, read the way Ollama reads it, or its default. */
+        val ollama: String = ollamaUrl(System.getenv("OLLAMA_HOST"))
+
         /** Gemma in the local Ollama. It thinks before it answers: worth it for the finished version, not for a line of the diary. */
         fun model(
             client: HttpClient,
@@ -134,10 +141,24 @@ class Home(val path: Path) {
             OpenAiChatModel.ollama(
                 client,
                 model = modelName,
+                baseUrl = "$ollama/v1",
                 parameters = if (think) JsonObject(emptyMap()) else buildJsonObject { put("reasoning_effort", "none") },
                 timeout = 15.minutes,
             )
     }
+}
+
+/**
+ * The address of Ollama for the value of `OLLAMA_HOST`: `127.0.0.1:11434` when it is empty, as
+ * Ollama does. `0.0.0.0`, which tells Ollama to listen everywhere, is reached at `127.0.0.1`.
+ */
+internal fun ollamaUrl(host: String?): String {
+    val value = host?.trim()?.trimEnd('/').orEmpty()
+    if (value.isEmpty()) return "http://127.0.0.1:11434"
+    val uri = URI(if ("://" in value) value else "http://$value")
+    val port = if (uri.port != -1) uri.port else if ("://" !in value) 11434 else if (uri.scheme == "https") 443 else 80
+    val name = uri.host?.takeUnless { it == "0.0.0.0" || it == "[::]" } ?: "127.0.0.1"
+    return "${uri.scheme}://$name:$port"
 }
 
 internal fun Path.readTextOrEmpty(): String = if (exists()) readText() else ""

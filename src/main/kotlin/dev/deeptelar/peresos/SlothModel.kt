@@ -11,7 +11,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.Desktop
-import java.net.ConnectException
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -82,7 +81,10 @@ internal class SlothModel(
     init {
         scope.launch {
             session.snapshot.collect { snapshot ->
-                if (snapshot is GraphSnapshot.Stopped && snapshot.cause != null) trouble = describe(snapshot.cause!!)
+                if (snapshot is GraphSnapshot.Stopped && snapshot.cause != null) {
+                    trouble = trouble(snapshot.cause!!)
+                    home.log.error("The wake stopped", snapshot.cause!!)
+                }
                 // Also after a stop: it may have swallowed before the diary failed.
                 if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) pile = home.pile.items()
             }
@@ -206,11 +208,5 @@ internal class SlothModel(
             trouble = null
             command().invokeOnCompletion { awake.close() }
         }
-    }
-
-    private fun describe(cause: Throwable): String {
-        val chain = generateSequence(cause) { it.cause }
-        if (chain.any { it is ConnectException }) return "Peresós could not reach Gemma. Is Ollama running? Start it with: ollama serve"
-        return "Something went wrong while it chewed: ${chain.last().message ?: chain.last()::class.simpleName}"
     }
 }

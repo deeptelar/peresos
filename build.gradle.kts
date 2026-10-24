@@ -26,6 +26,8 @@ dependencies {
     testImplementation("dev.deeptelar:telar-test:$telar")
     testImplementation("dev.deeptelar:telar-checkpoint-file:$telar")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    // The doctor's tests talk to a pretend Ollama.
+    testImplementation("io.ktor:ktor-client-mock:3.6.0")
     // The soak test clicks the window's buttons.
     @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
     testImplementation(compose.uiTest)
