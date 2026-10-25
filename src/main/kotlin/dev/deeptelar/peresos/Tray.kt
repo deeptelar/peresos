@@ -3,7 +3,6 @@ package dev.deeptelar.peresos
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +92,8 @@ private fun app(
                 SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather, updater = Updater(client))
             }
         var shown by remember { mutableStateOf(true) }
+        // The window, for the window of an item to give the focus back to.
+        var main by remember { mutableStateOf<ComposeWindow?>(null) }
         // When the window hid because the person pressed the tray icon, that click must not show it again.
         val hidden = remember { AtomicLong() }
         val icon = remember { if (tray) TrayIcon(trayImage(null), "Peresós").apply { isImageAutoSize = !LINUX } else null }
@@ -141,7 +142,7 @@ private fun app(
                 SystemTray.getSystemTray().add(icon)
                 onDispose { SystemTray.getSystemTray().remove(icon) }
             }
-            val snapshot by model.session.snapshot.collectAsState()
+            val snapshot = model.snapshot
             val (badge, tooltip) = mood(snapshot, model)
             // The icon shows what the sloth is doing, drawn for the size the tray gives it.
             LaunchedEffect(badge, tooltip, shown) {
@@ -154,7 +155,7 @@ private fun app(
         Window(
             visible = shown,
             create = {
-                ComposeWindow().apply {
+                ComposeWindow().also { main = it }.apply {
                     title = "Peresós"
                     if (tray) {
                         // No button in the dock or the taskbar, and no frame: the icon in the tray is its button.
@@ -217,6 +218,16 @@ private fun app(
                 state = rememberWindowState(size = DpSize(420.dp, 480.dp), position = WindowPosition(Alignment.Center)),
                 title = "Peresós: an item of the pile",
             ) {
+                // Closing it gives the focus back to the window while this one still has it: else the
+                // desktop gives it to another app, and the window hides.
+                DisposableEffect(Unit) {
+                    onDispose {
+                        main?.takeIf { shown }?.let {
+                            it.toFront()
+                            it.requestFocus()
+                        }
+                    }
+                }
                 ItemScreen(model, item)
             }
         }

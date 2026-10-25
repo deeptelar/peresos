@@ -40,6 +40,7 @@ class SlothTest {
         override fun replace(
             item: String,
             with: String,
+            at: Int,
         ) {
             items[items.indexOf(item)] = with
         }

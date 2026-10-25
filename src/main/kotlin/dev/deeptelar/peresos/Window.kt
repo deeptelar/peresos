@@ -19,7 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -61,7 +63,7 @@ internal fun SlothScreen(
     chooseFiles: () -> List<Path> = ::chooseFiles,
     header: @Composable () -> Unit = {},
 ) {
-    val snapshot by model.session.snapshot.collectAsState()
+    val snapshot = model.snapshot
     val sloth = snapshot.state
     val tick = rememberTick()
     val onTop = model.isFull(sloth)
@@ -309,10 +311,10 @@ private fun Pile(
         // One line of each item, cut with an ellipsis: the pencil opens it whole, in its own window.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
-                Row(Modifier.fillMaxWidth().clickable { model.open(item) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { model.open(item, index) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
                     PixelText(line(item), Modifier.weight(1f), size = BODY, maxLines = 1)
-                    PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item) })
+                    PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item, index) })
                 }
             }
         }
@@ -328,12 +330,13 @@ internal fun ItemScreen(
     model: SlothModel,
     item: String,
 ) {
-    val snapshot by model.session.snapshot.collectAsState()
-    val number = model.pile.indexOf(item) + 1
+    val snapshot = model.snapshot
+    val number = model.openedAt.takeIf { model.pile.getOrNull(it) == item }?.plus(1) ?: (model.pile.indexOf(item) + 1)
     val editable = remember(snapshot, item) { model.canEdit(item) }
     var editing by remember(item) { mutableStateOf(false) }
     var text by remember(item) { mutableStateOf(words(item)) }
     var removing by remember(item) { mutableStateOf(false) }
+    var busy by remember(item) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().drawBehind { planks() }.padding(12.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().pixelBox(Ink.paper).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PixelText(if (number > 0) "ITEM $number OF ${model.pile.size}" else "ITEM", size = SMALL, color = Ink.faint)
@@ -344,25 +347,29 @@ internal fun ItemScreen(
                 }
             }
             if (editing) {
-                PixelField(text, { text = it }, if (links(item).isEmpty()) "What it is" else "A note for Gemma", Modifier.weight(1f).fillMaxWidth(), maxLines = Int.MAX_VALUE)
+                val focus = remember { FocusRequester() }
+                PixelField(text, { text = it }, if (links(item).isEmpty()) "What it is" else "A note for Gemma", Modifier.weight(1f).fillMaxWidth().focusRequester(focus), maxLines = Int.MAX_VALUE)
+                // Ready to type, without a click in the field first.
+                LaunchedEffect(Unit) { focus.requestFocus() }
             } else {
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                     SelectionContainer { PixelText(words(item).ifEmpty { "No words, only the file." }, size = BODY, color = if (words(item).isEmpty()) Ink.faint else Ink.text) }
                 }
             }
             if (!editable) Hint("It is in its mouth now. Answer it first.")
+            if (busy) Hint("Peresós is awake in a terminal. Try again once it is done.")
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
                 removing -> {
                     PixelText("Off the pile, uneaten?", Modifier.weight(1f), size = BODY, color = Ink.paper)
-                    PixelButton("Remove", Ink.red, { model.remove(item) }, small = true)
+                    PixelButton("Remove", Ink.red, { busy = !model.remove(item) }, small = true)
                     PixelButton("Keep", Ink.paperDark, { removing = false }, small = true)
                 }
                 editing -> {
                     PixelButton("Save", Ink.green, {
-                        model.edit(item, text)
-                        editing = false
+                        busy = !model.edit(item, text)
+                        if (!busy) editing = false
                     }, enabled = editable && (text.isNotBlank() || links(item).isNotEmpty()), small = true)
                     PixelButton("Cancel", Ink.paperDark, {
                         text = words(item)

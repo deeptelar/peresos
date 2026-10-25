@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.deeptelar.telar.CompiledGraph
+import dev.deeptelar.telar.GraphResult
 import dev.deeptelar.telar.GraphSession
 import dev.deeptelar.telar.GraphSnapshot
 import kotlinx.coroutines.CancellationException
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.io.IOException
@@ -37,7 +39,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 internal class SlothModel(
     private val home: Home,
-    graph: CompiledGraph<Sloth>,
+    private val graph: CompiledGraph<Sloth>,
     private val scope: CoroutineScope,
     val hungry: Boolean = false,
     private val today: () -> String = { LocalDate.now().toString() },
@@ -126,15 +128,31 @@ internal class SlothModel(
     var ateHere: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * What the window shows: the snapshot of the session, except while it reads the checkpoint again
+     * after the terminal changed something. Then it keeps showing the last one, instead of a sloth
+     * that blinks into "opens one eye" for a moment.
+     */
+    var snapshot: GraphSnapshot<Sloth> by mutableStateOf(session.snapshot.value)
+        private set
+
+    /** What the files of the home looked like when the window last read them, or changed them itself. */
+    @Volatile private var looked: List<Long> = home.version()
+
     init {
         scope.launch {
             session.snapshot.collect { snapshot ->
+                if (snapshot !is GraphSnapshot.Restoring || this@SlothModel.snapshot.state == null) this@SlothModel.snapshot = snapshot
                 if (snapshot is GraphSnapshot.Stopped && snapshot.cause != null) {
                     trouble = trouble(snapshot.cause!!)
                     home.log.error("The wake stopped", snapshot.cause!!)
                 }
                 // Also after a stop: it may have swallowed before the diary failed.
-                if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) pile = home.pile.items()
+                if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) {
+                    pile = home.pile.items()
+                    // What its own wake wrote is no news to read again.
+                    if (snapshot !is GraphSnapshot.Idle) looked = home.version()
+                }
             }
         }
         session.restore()
@@ -147,13 +165,19 @@ internal class SlothModel(
         }
         // The terminal shares the home: when it feeds, dresses or wakes the sloth, the window shows it.
         scope.launch {
-            var seen = home.version()
             while (true) {
                 delay(2.seconds)
-                day = today()
-                val now = home.version()
-                if (now != seen && session.snapshot.value !is GraphSnapshot.Running) refresh()
-                seen = now
+                // A file it cannot read for a moment must not stop the window from looking again.
+                try {
+                    day = today()
+                    val now = home.version()
+                    if (now != looked && session.snapshot.value !is GraphSnapshot.Running) refresh()
+                    looked = now
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    home.log.error("Looking at the home", e)
+                }
             }
         }
     }
@@ -161,7 +185,8 @@ internal class SlothModel(
     /** Reads everything again, in case the terminal changed it. */
     fun refresh() {
         pile = home.pile.items()
-        if (opened !in pile) opened = null
+        // The terminal may have moved, changed or removed the open item.
+        opened?.let { item -> if (pile.getOrNull(openedAt) != item) open(item.takeIf { it in pile }) }
         wearing = home.wearing()
         about = home.about()
         gemma = home.gemma()
@@ -328,38 +353,69 @@ internal class SlothModel(
     var opened: String? by mutableStateOf(null)
         private set
 
-    fun open(item: String?) {
+    /** Where [opened] is on the pile, as the same text can be on it twice. */
+    var openedAt: Int by mutableStateOf(-1)
+        private set
+
+    fun open(
+        item: String?,
+        at: Int = item?.let(pile::indexOf) ?: -1,
+    ) {
         opened = item
+        openedAt = at
     }
 
-    /** Whether the person may edit or remove [item] now: not while it chews, nor the item in its mouth. */
+    /**
+     * Whether the person may edit or remove [item] now: not while it chews, nor the item it holds,
+     * waiting for the answer or in a wake that stopped halfway.
+     */
     fun canEdit(item: String): Boolean =
-        when (val snapshot = session.snapshot.value) {
+        when (val snapshot = snapshot) {
             is GraphSnapshot.Running, is GraphSnapshot.Restoring -> false
-            is GraphSnapshot.Interrupted -> snapshot.state?.item?.trim() != item.trim()
-            else -> true
+            is GraphSnapshot.Completed, is GraphSnapshot.Idle -> true
+            else -> snapshot.state?.item?.trim() != item.trim()
         }
 
-    /** Writes [words] in [item] in place of what the person wrote there; its files stay. */
+    /**
+     * Writes [words] in [item] in place of what the person wrote there; its files stay. Left empty, it
+     * leaves the pile. `false` when it could not: the sloth holds the item, or a terminal has it awake.
+     */
     fun edit(
         item: String,
         words: String,
-    ) {
-        if (!canEdit(item)) return
-        val at = pile.indexOf(item)
+    ): Boolean = changing(item) { at ->
         val edited = rewrite(item, words)
-        home.pile.replace(item, edited)
+        home.pile.replace(item, edited, at)
         pile = home.pile.items()
-        // An item left empty leaves the pile; otherwise it stays where it was.
-        if (opened == item) opened = if (edited.isBlank()) null else pile.getOrNull(at)
+        if (opened == item) open(if (edited.isBlank()) null else pile.getOrNull(at), at)
     }
 
-    /** Takes [item] off the pile without eating it, as one fed by mistake. */
-    fun remove(item: String) {
-        if (!canEdit(item)) return
-        home.pile.remove(item)
-        pile = home.pile.items()
-        if (opened == item) opened = null
+    /** Takes [item] off the pile without eating it, as one fed by mistake; `false` when it could not, as [edit]. */
+    fun remove(item: String): Boolean =
+        changing(item) { at ->
+            home.pile.replace(item, "", at)
+            pile = home.pile.items()
+            if (opened == item) open(null)
+        }
+
+    /**
+     * Changes [item], at its place on the pile, while it holds the lock of its home: not while a
+     * terminal has the sloth awake, nor when the checkpoint says it holds that item.
+     */
+    private fun changing(
+        item: String,
+        change: (at: Int) -> Unit,
+    ): Boolean {
+        if (!canEdit(item)) return false
+        synchronized(turn) {
+            val awake = home.awake() ?: return false
+            awake.use {
+                val held = runBlocking { graph.lastResult(home.config) as? GraphResult.Interrupted }?.state?.item
+                if (held?.trim() == item.trim()) return false.also { refresh() }
+                change(openedAt.takeIf { opened == item && pile.getOrNull(it) == item } ?: pile.indexOf(item))
+                return true
+            }
+        }
     }
 
     /** Opens the photo, the PDF or the text file that an item holds, where the desktop can. */

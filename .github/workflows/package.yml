@@ -86,6 +86,13 @@ jobs:
           printf 'Reply to the landlord\n' > note.txt
           ~/.local/bin/peresos feed --notify note.txt
           ~/.local/bin/peresos pile | grep "Text: note.txt"
+          # An item edited and removed in place: the pile file is replaced whole each time.
+          n=$(~/.local/bin/peresos pile | grep "Try the installer" | sed 's/^ *\([0-9]*\)\..*/\1/')
+          ~/.local/bin/peresos pile edit "$n" "Try the installer, edited"
+          ~/.local/bin/peresos pile | grep "$n.  Try the installer, edited"
+          ~/.local/bin/peresos pile remove "$n"
+          if ~/.local/bin/peresos pile | grep "Try the installer"; then echo "peresos pile remove left it"; exit 1; fi
+          ~/.local/bin/peresos pile | grep "Text: note.txt"
           cat ~/.peresos/logs/doctor-*.md 2>/dev/null | tail -20 || true
           # peresos update, with the build: the installer next to its packages, outside build/dist.
           mkdir -p /tmp/from && cp build/dist/* install.sh /tmp/from/
@@ -120,6 +127,14 @@ jobs:
           "Reply to the landlord" | Set-Content note.txt
           Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe" -ArgumentList 'feed', '--notify', "`"$pwd\note.txt`""
           if (-not ((peresos pile) -match 'Text: note.txt')) { throw "Feed to Peresós did not feed it" }
+          # An item edited and removed in place: Windows replaces a file differently.
+          peresos feed "Reply to Jordi"
+          $n = ((peresos pile) | Select-String 'Reply to Jordi' | Select-Object -First 1).Line.Trim().Split('.')[0]
+          peresos pile edit $n "Reply to Jordi: yes"
+          if (-not ((peresos pile) -match 'Reply to Jordi: yes')) { throw "peresos pile edit did not edit it" }
+          peresos pile remove $n
+          if ((peresos pile) -match 'Reply to Jordi') { throw "peresos pile remove left it" }
+          if (-not ((peresos pile) -match 'Text: note.txt')) { throw "peresos pile remove took the wrong one" }
           # The shortcut of the Start menu, which Peresós wrote itself, opens the window.
           $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Peres$([char]0xF3)s.lnk"
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($menu).TargetPath

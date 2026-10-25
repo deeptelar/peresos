@@ -150,6 +150,45 @@ class PileTest {
     }
 
     @Test
+    fun `of two items with the same text, the one at its place is edited`() {
+        pile.add("Decide on the gym")
+        pile.add("Reply to Marta")
+        pile.add("Decide on the gym")
+
+        pile.replace("Decide on the gym", "Cancel the gym", at = 2)
+        pile.replace("Reply to Marta", "", at = 1)
+
+        assertEquals(listOf("Decide on the gym", "Cancel the gym"), pile.items())
+    }
+
+    @Test
+    fun `two writers at once lose nothing, and a reader never sees half a pile`() {
+        val writers = 4
+        val each = 60
+        val torn = java.util.concurrent.atomic.AtomicInteger()
+        val reading = java.util.concurrent.atomic.AtomicBoolean(true)
+        val reader =
+            Thread {
+                while (reading.get()) {
+                    val items = pile.items()
+                    if (items.any { !it.startsWith("Writer ") || !it.endsWith(" done") }) torn.incrementAndGet()
+                }
+            }.apply { start() }
+        // Each writer has its own pile on the same file, as a terminal and the window do.
+        (1..writers).map { writer ->
+            Thread {
+                val own = FilePile(home.resolve("pile.md"), home.resolve("done"))
+                repeat(each) { own.add("Writer $writer, item $it, done") }
+            }.apply { start() }
+        }.forEach { it.join() }
+        reading.set(false)
+        reader.join()
+
+        assertEquals(writers * each, pile.items().size, "every item is there")
+        assertEquals(0, torn.get(), "the reader saw a pile cut halfway")
+    }
+
+    @Test
     fun `a file whose link is edited away leaves with it`() {
         val bill = pile.addFile(photo("bill.jpg"))
         val copy = pile.path(links(bill).single())
