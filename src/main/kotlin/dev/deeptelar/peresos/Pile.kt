@@ -223,6 +223,9 @@ fun rewrite(
     words: String,
 ): String = (links(item).map { it.link } + words.trim()).filter { it.isNotEmpty() }.joinToString("\n")
 
+/** An item in one line, for a list: its lines joined, with its files as in [shown]. */
+fun line(item: String): String = shown(item).lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+
 /** An item as the person reads it, in a list: a link to a file becomes `Photo: receipt.jpg`, `PDF: contract.pdf` or `Text: notes.md`. */
 fun shown(item: String): String = LINK.replace(item) { Attached(it).label }
 

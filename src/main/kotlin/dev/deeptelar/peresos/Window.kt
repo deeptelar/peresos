@@ -306,12 +306,12 @@ private fun Pile(
         Asking("Something you keep putting off", "Feed it", model::feed)
         PixelLink("Or feed a photo, a PDF or a text file") { model.feedFiles(choose()) }
         model.feedTrouble?.let { Hint(it) }
-        // Three lines of each item at most: the pencil opens it whole, in its own window.
+        // One line of each item, cut with an ellipsis: the pencil opens it whole, in its own window.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
-                Row(Modifier.fillMaxWidth().clickable { model.open(item) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { model.open(item) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
-                    PixelText(shown(item), Modifier.weight(1f), size = BODY, maxLines = 3)
+                    PixelText(line(item), Modifier.weight(1f), size = BODY, maxLines = 1)
                     PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item) })
                 }
             }

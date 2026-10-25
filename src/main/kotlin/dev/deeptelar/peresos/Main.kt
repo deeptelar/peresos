@@ -422,7 +422,7 @@ private suspend fun wear(
 }
 
 /**
- * `peresos pile`: what is still on the pile, three lines of each item at most. `peresos pile 3` shows
+ * `peresos pile`: what is still on the pile, a line of each item. `peresos pile 3` shows
  * the third whole, `peresos pile edit 3` opens it in the person's editor (or writes the text that
  * follows in it), and `peresos pile remove 3` takes it off the pile uneaten. Its files stay when its
  * words change.
@@ -462,8 +462,8 @@ private suspend fun pile(
 private fun showPile(items: List<String>) {
     if (items.isEmpty()) return say("The pile is empty.")
     items.forEachIndexed { index, item ->
-        val lines = wrap(shown(item), 70).filter { it.isNotBlank() }
-        lines.take(3).forEachIndexed { at, line -> println("  ${if (at == 0) "${index + 1}.".padEnd(4) else "    "}$line${if (at == 2 && lines.size > 3) " ..." else ""}") }
+        val line = line(item)
+        println("  ${"${index + 1}.".padEnd(4)}${if (line.length > 70) line.take(69).trimEnd() + "…" else line}")
     }
     println()
     say("To see one whole: peresos pile 1. To change it: peresos pile edit 1, or remove 1.")

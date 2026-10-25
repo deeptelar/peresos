@@ -315,7 +315,7 @@ class WindowTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun `the pile page shows three lines of an item, and the pencil opens it whole to edit or remove`() {
+    fun `the pile page shows a line of each item, and the pencil opens it whole to edit or remove`() {
         val long = (1..8).joinToString("\n") { "Line $it of the trip plan" }
         home.pile.add(long)
         home.pile.add("Decide on the gym membership")
@@ -329,8 +329,10 @@ class WindowTest {
             waitForIdle()
             val layouts = mutableListOf<TextLayoutResult>()
             onNodeWithText("Line 1 of the trip plan", substring = true, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
-            assertEquals(3, layouts.single().lineCount, "three lines of eight")
+            assertEquals(1, layouts.single().lineCount, "one line of eight")
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("pile-long.png").toFile())
+            // The rest is cut with an ellipsis, which Compose on the desktop draws without saying so.
+            assertTrue(layouts.single().getLineEnd(0, visibleEnd = true) < layouts.single().layoutInput.text.length, "the line is cut")
             onNodeWithContentDescription("Open item 1").performClick()
             waitForIdle()
             assertEquals(long, model.opened)
