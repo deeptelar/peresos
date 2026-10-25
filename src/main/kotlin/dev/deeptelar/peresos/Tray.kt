@@ -13,7 +13,10 @@ import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.window.application
 import dev.deeptelar.peresos.Home.Companion.model
 import dev.deeptelar.telar.GraphSnapshot
@@ -195,14 +198,26 @@ private fun app(
             },
             dispose = ComposeWindow::dispose,
         ) {
-            LaunchedEffect(shown) {
-                if (shown) {
+            // Also when the window of an item closes, so that a click elsewhere hides this one again.
+            LaunchedEffect(shown, model.opened == null) {
+                if (shown && model.opened == null) {
                     window.toFront()
                     window.requestFocus()
                 }
             }
             SlothScreen(model, onQuit = quit) {
                 if (tray) WindowDraggableArea { TitleBar(onHide = { shown = false }) }
+            }
+        }
+
+        // An item of the pile, whole, in a window with a frame, to read and edit it at ease.
+        model.opened?.let { item ->
+            Window(
+                onCloseRequest = { model.open(null) },
+                state = rememberWindowState(size = DpSize(420.dp, 480.dp), position = WindowPosition(Alignment.Center)),
+                title = "Peresós: an item of the pile",
+            ) {
+                ItemScreen(model, item)
             }
         }
     }

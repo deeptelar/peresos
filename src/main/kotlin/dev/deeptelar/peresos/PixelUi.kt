@@ -32,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
@@ -91,6 +92,7 @@ internal fun PixelText(
     text,
     modifier,
     style = TextStyle(fontFamily = PixelFont, fontSize = size, color = color, lineHeight = size * 1.25f, fontFeatureSettings = PLAIN),
+    overflow = TextOverflow.Ellipsis,
     maxLines = maxLines,
 )
 
@@ -179,6 +181,9 @@ internal fun PixelLink(
 /** The three bars of a menu, in pixels: `#` is ink. */
 internal val MENU_ICON = listOf("#######", ".......", "#######", ".......", "#######")
 
+/** A pencil, to open an item of the pile and edit it. */
+internal val OPEN_ICON = listOf(".....##", "....###", "...###.", "..###..", ".###...", "##.....", "#......")
+
 /** A cross, to hide the window. */
 internal val CLOSE_ICON = listOf("#...#", ".#.#.", "..#..", ".#.#.", "#...#")
 
@@ -236,6 +241,7 @@ internal fun PixelField(
     onChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
+    maxLines: Int = 4,
 ) {
     BasicTextField(
         value,
@@ -243,7 +249,7 @@ internal fun PixelField(
         modifier.pixelBox(Ink.field, raised = false),
         textStyle = TextStyle(fontFamily = PixelFont, fontSize = BODY, color = Ink.text, lineHeight = BODY * 1.25f, fontFeatureSettings = PLAIN),
         cursorBrush = SolidColor(Ink.text),
-        maxLines = 4,
+        maxLines = maxLines,
         decorationBox = { field ->
             Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                 if (value.isEmpty()) PixelText(placeholder, color = Ink.faint)

@@ -161,6 +161,7 @@ internal class SlothModel(
     /** Reads everything again, in case the terminal changed it. */
     fun refresh() {
         pile = home.pile.items()
+        if (opened !in pile) opened = null
         wearing = home.wearing()
         about = home.about()
         gemma = home.gemma()
@@ -322,6 +323,50 @@ internal class SlothModel(
         home.pile.add(item)
         pile = home.pile.items()
     }
+
+    /** The item open in its own window, to read it whole and edit it; `null` when none is. */
+    var opened: String? by mutableStateOf(null)
+        private set
+
+    fun open(item: String?) {
+        opened = item
+    }
+
+    /** Whether the person may edit or remove [item] now: not while it chews, nor the item in its mouth. */
+    fun canEdit(item: String): Boolean =
+        when (val snapshot = session.snapshot.value) {
+            is GraphSnapshot.Running, is GraphSnapshot.Restoring -> false
+            is GraphSnapshot.Interrupted -> snapshot.state?.item?.trim() != item.trim()
+            else -> true
+        }
+
+    /** Writes [words] in [item] in place of what the person wrote there; its files stay. */
+    fun edit(
+        item: String,
+        words: String,
+    ) {
+        if (!canEdit(item)) return
+        val at = pile.indexOf(item)
+        val edited = rewrite(item, words)
+        home.pile.replace(item, edited)
+        pile = home.pile.items()
+        // An item left empty leaves the pile; otherwise it stays where it was.
+        if (opened == item) opened = if (edited.isBlank()) null else pile.getOrNull(at)
+    }
+
+    /** Takes [item] off the pile without eating it, as one fed by mistake. */
+    fun remove(item: String) {
+        if (!canEdit(item)) return
+        home.pile.remove(item)
+        pile = home.pile.items()
+        if (opened == item) opened = null
+    }
+
+    /** Opens the photo, the PDF or the text file that an item holds, where the desktop can. */
+    val openFile: ((Attached) -> Unit)? =
+        Desktop.isDesktopSupported().takeIf { it && Desktop.getDesktop().isSupported(Desktop.Action.OPEN) }?.let {
+            { file -> Desktop.getDesktop().open(home.pile.path(file).toFile()) }
+        }
 
     /** Why the last file could not be fed: Peresós does not eat its kind. */
     var feedTrouble: String? by mutableStateOf(null)

@@ -37,6 +37,13 @@ class SlothTest {
             items += item
         }
 
+        override fun replace(
+            item: String,
+            with: String,
+        ) {
+            items[items.indexOf(item)] = with
+        }
+
         override fun keep(day: String, item: String, bite: Bite) {
             kept += bite
         }

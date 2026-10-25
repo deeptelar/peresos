@@ -74,9 +74,11 @@ try {
     $inMenu = $false # a policy that keeps peresos.exe from running: the doctor says so below
 }
 
-# Feed to Peresós in the menu of photos, PDFs and text files in the Explorer (under Show more options
-# on Windows 11). The window's launcher runs it, so no console opens. peresos uninstall removes it.
-foreach ($type in 'image', '.pdf', 'text') {
+# Feed to Peresós in the menu of photos and PDFs in the Explorer (under Show more options on Windows
+# 11). The window's launcher runs it, so no console opens. peresos uninstall removes it. Text files
+# had it once: now a text file goes on the pile with peresos feed, or from the window.
+Remove-Item -LiteralPath "HKCU:\Software\Classes\SystemFileAssociations\text\shell\Peresos" -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($type in 'image', '.pdf') {
     $key = "HKCU:\Software\Classes\SystemFileAssociations\$type\shell\Peresos"
     New-Item -Path $key -Value "Feed to $name" -Force | Out-Null
     New-ItemProperty -Path $key -Name 'Icon' -Value $window -Force | Out-Null

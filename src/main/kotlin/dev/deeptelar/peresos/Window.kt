@@ -306,11 +306,74 @@ private fun Pile(
         Asking("Something you keep putting off", "Feed it", model::feed)
         PixelLink("Or feed a photo, a PDF or a text file") { model.feedFiles(choose()) }
         model.feedTrouble?.let { Hint(it) }
+        // Three lines of each item at most: the pencil opens it whole, in its own window.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { model.open(item) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
-                    PixelText(shown(item).lines().first(), size = BODY, maxLines = 2)
+                    PixelText(shown(item), Modifier.weight(1f), size = BODY, maxLines = 3)
+                    PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item) })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One item of the pile, whole, in a window of its own: to read it, edit what the person wrote in it,
+ * open the files it holds, or take it off the pile. Its files stay when its words change.
+ */
+@Composable
+internal fun ItemScreen(
+    model: SlothModel,
+    item: String,
+) {
+    val snapshot by model.session.snapshot.collectAsState()
+    val number = model.pile.indexOf(item) + 1
+    val editable = remember(snapshot, item) { model.canEdit(item) }
+    var editing by remember(item) { mutableStateOf(false) }
+    var text by remember(item) { mutableStateOf(words(item)) }
+    var removing by remember(item) { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().drawBehind { planks() }.padding(12.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().pixelBox(Ink.paper).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PixelText(if (number > 0) "ITEM $number OF ${model.pile.size}" else "ITEM", size = SMALL, color = Ink.faint)
+            links(item).forEach { file ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PixelText(file.label, Modifier.weight(1f), size = BODY, maxLines = 1)
+                    model.openFile?.let { open -> PixelLink("Open") { open(file) } }
+                }
+            }
+            if (editing) {
+                PixelField(text, { text = it }, if (links(item).isEmpty()) "What it is" else "A note for Gemma", Modifier.weight(1f).fillMaxWidth(), maxLines = Int.MAX_VALUE)
+            } else {
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    SelectionContainer { PixelText(words(item).ifEmpty { "No words, only the file." }, size = BODY, color = if (words(item).isEmpty()) Ink.faint else Ink.text) }
+                }
+            }
+            if (!editable) Hint("It is in its mouth now. Answer it first.")
+        }
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            when {
+                removing -> {
+                    PixelText("Off the pile, uneaten?", Modifier.weight(1f), size = BODY, color = Ink.paper)
+                    PixelButton("Remove", Ink.red, { model.remove(item) }, small = true)
+                    PixelButton("Keep", Ink.paperDark, { removing = false }, small = true)
+                }
+                editing -> {
+                    PixelButton("Save", Ink.green, {
+                        model.edit(item, text)
+                        editing = false
+                    }, enabled = editable && (text.isNotBlank() || links(item).isNotEmpty()), small = true)
+                    PixelButton("Cancel", Ink.paperDark, {
+                        text = words(item)
+                        editing = false
+                    }, small = true)
+                }
+                else -> {
+                    PixelButton("Edit", Ink.yellow, { editing = true }, enabled = editable, small = true)
+                    PixelButton("Remove", Ink.red, { removing = true }, enabled = editable, small = true)
+                    Box(Modifier.weight(1f))
+                    PixelButton("Close", Ink.paperDark, { model.open(null) }, small = true)
                 }
             }
         }

@@ -185,7 +185,7 @@ fun sloth(
                 "chew",
                 work = { sloth ->
                     val item = checkNotNull(sloth.item)
-                    if (!gemma()) return@node raw(item)
+                    if (!gemma()) return@node raw(pile.read(item))
                     // The photos and PDFs of the item are read from the pile here, never kept in the checkpoint.
                     val plate = pile.serve(item)
                     model.ask<Bite>(chewPrompt(sloth, plate.text, about()), system = if (sloth.lazy) CHEF + LAZY else CHEF, attachments = plate.attachments)
@@ -242,7 +242,7 @@ fun sloth(
 
 /** The item as it is, for a wake without Gemma: its first line is the title, and the whole of it what to do. */
 private fun raw(item: String): Bite {
-    val text = shown(item).trim()
+    val text = item.trim()
     val first = text.lines().first().trim()
     return Bite(Kind.TASK, if (first.length <= 48) first else first.take(47).trimEnd() + "…", text)
 }

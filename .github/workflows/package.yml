@@ -71,7 +71,7 @@ jobs:
           ls ~/.peresos/logs/doctor-*.md
           printf 'Reply to the landlord\n' > note.txt
           ~/.local/share/nautilus/scripts/"Feed to Peresós" "$PWD/note.txt"
-          peresos pile | grep "Reply to the landlord"
+          peresos pile | grep "Text: note.txt"
           printf 'y\nn\n' | peresos uninstall
           if dpkg -s peresos >/dev/null 2>&1 || [ -e /usr/bin/peresos ] || [ -e /opt/peresos ]; then echo "apt did not remove it"; exit 1; fi
           [ ! -e ~/.local/share/nautilus/scripts/"Feed to Peresós" ] || { echo "The menu of Nautilus is still there"; exit 1; }
@@ -85,7 +85,7 @@ jobs:
           ~/.local/bin/peresos feed "Try the installer"
           printf 'Reply to the landlord\n' > note.txt
           ~/.local/bin/peresos feed --notify note.txt
-          ~/.local/bin/peresos pile | grep "Reply to the landlord"
+          ~/.local/bin/peresos pile | grep "Text: note.txt"
           cat ~/.peresos/logs/doctor-*.md 2>/dev/null | tail -20 || true
           # peresos update, with the build: the installer next to its packages, outside build/dist.
           mkdir -p /tmp/from && cp build/dist/* install.sh /tmp/from/
@@ -115,11 +115,11 @@ jobs:
           $shortcut = "$([Environment]::GetFolderPath('Programs'))\Peres$([char]0xF3)s.lnk"
           if (-not (Test-Path $shortcut)) { throw "No shortcut in the Start menu" }
           # Feed to Peresós in the menu of files: its keys, and the window's launcher that they run.
-          $menus = 'image', '.pdf', 'text' | ForEach-Object { "HKCU:\Software\Classes\SystemFileAssociations\$_\shell\Peresos" }
+          $menus = 'image', '.pdf' | ForEach-Object { "HKCU:\Software\Classes\SystemFileAssociations\$_\shell\Peresos" }
           $menus | ForEach-Object { if (-not (Test-Path "$_\command")) { throw "No Feed to Peresós in $_" } }
           "Reply to the landlord" | Set-Content note.txt
           Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\Peresos\peresos-window.exe" -ArgumentList 'feed', '--notify', "`"$pwd\note.txt`""
-          if (-not ((peresos pile) -match 'Reply to the landlord')) { throw "Feed to Peresós did not feed it" }
+          if (-not ((peresos pile) -match 'Text: note.txt')) { throw "Feed to Peresós did not feed it" }
           # The shortcut of the Start menu, which Peresós wrote itself, opens the window.
           $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Peres$([char]0xF3)s.lnk"
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($menu).TargetPath
