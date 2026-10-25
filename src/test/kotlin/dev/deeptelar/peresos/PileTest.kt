@@ -100,13 +100,64 @@ class PileTest {
     }
 
     @Test
-    fun `a text file gives its text, and other files are refused`() {
-        val note = elsewhere.resolve("landlord.txt").apply { writeText("The boiler check is due. Which morning suits you?\n") }
-        assertEquals("The boiler check is due. Which morning suits you?", pile.addFile(note))
+    fun `a text file is one item, whatever lines it has, and Gemma gets its text`() {
+        val notes = elsewhere.resolve("notes.md").apply { writeText("---\ntitle: Trip\n---\n# Trip\n\nBook the train.\n\n---\n\nAsk Marta about the dog.\n") }
+        val item = pile.addFile(notes)
 
+        assertEquals(listOf(item), pile.items())
+        assertEquals("Text: notes.md", shown(item))
+        val plate = pile.serve(item)
+        assertContains(plate.text, "the text file notes.md, which says:")
+        assertContains(plate.text, "Ask Marta about the dog.")
+        assertTrue(plate.attachments.isEmpty())
+        assertTrue(pile.read(item).startsWith("Text: notes.md\n\n---\ntitle: Trip"), "without Gemma, the person reads the file whole")
+    }
+
+    @Test
+    fun `other files, empty ones, and the pile itself are refused`() {
         val refused = assertFailsWith<IllegalArgumentException> { pile.addFile(elsewhere.resolve("song.mp3").apply { writeText("") }) }
         assertContains(refused.message!!, "song.mp3")
-        assertEquals(1, pile.items().size)
+        assertFailsWith<IllegalArgumentException> { pile.addFile(elsewhere.resolve("empty.txt").apply { writeText("  \n") }) }
+        pile.add("Reply to the landlord")
+        val itself = assertFailsWith<IllegalArgumentException> { pile.addFile(home.resolve("pile.md")) }
+        assertContains(itself.message!!, "the pile itself")
+        assertEquals(listOf("Reply to the landlord"), pile.items())
+    }
+
+    @Test
+    fun `a line of dashes in a typed item does not cut it in two`() {
+        pile.add("Pack for the trip:\n---\nsocks")
+        pile.add("Reply to the landlord")
+
+        assertEquals(listOf("Pack for the trip:\n***\nsocks", "Reply to the landlord"), pile.items())
+    }
+
+    @Test
+    fun `an edited item stays where it was, and keeps its files`() {
+        pile.add("Reply to the landlord")
+        val bill = pile.addFile(photo("bill.jpg"))
+        pile.add("Decide on the gym")
+
+        pile.replace("Reply to the landlord", "Reply to the landlord: Tuesday works")
+        pile.replace(bill, rewrite(bill, "Pay it before Friday"))
+
+        val items = pile.items()
+        assertEquals("Reply to the landlord: Tuesday works", items[0])
+        assertEquals("Pay it before Friday", words(items[1]))
+        assertEquals(listOf("Photo: bill.jpg"), links(items[1]).map { it.label })
+        assertTrue(pile.path(links(items[1]).single()).exists(), "the photo stays")
+        assertEquals("Decide on the gym", items[2])
+    }
+
+    @Test
+    fun `a file whose link is edited away leaves with it`() {
+        val bill = pile.addFile(photo("bill.jpg"))
+        val copy = pile.path(links(bill).single())
+
+        pile.replace(bill, "Pay the bill")
+
+        assertEquals(listOf("Pay the bill"), pile.items())
+        assertFalse(copy.exists())
     }
 
     @Test

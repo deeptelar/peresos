@@ -56,8 +56,9 @@ on_path() {
 # (GNOME) and Caja (MATE) under Scripts, Nemo (Cinnamon) and Dolphin (KDE) in the menu itself. It
 # runs the command $1, and shows the icon $2. peresos uninstall removes them.
 right_click() {
-	types="jpg;jpeg;png;gif;webp;pdf;txt;md;"
-	mimes="image/jpeg;image/png;image/gif;image/webp;application/pdf;text/plain;text/markdown;"
+	# Photos and PDFs: a text file goes on the pile with peresos feed, or from the window.
+	types="jpg;jpeg;png;gif;webp;pdf;"
+	mimes="image/jpeg;image/png;image/gif;image/webp;application/pdf;"
 	for scripts in nautilus:"$HOME/.local/share/nautilus/scripts" caja:"$HOME/.config/caja/scripts"; do
 		command -v "${scripts%%:*}" >/dev/null 2>&1 || continue
 		mkdir -p "${scripts#*:}"

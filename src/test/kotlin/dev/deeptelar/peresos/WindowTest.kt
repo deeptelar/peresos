@@ -6,16 +6,21 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import dev.deeptelar.telar.GraphSnapshot
 import dev.deeptelar.telar.test.ScriptedChatModel
 import io.ktor.client.HttpClient
@@ -306,6 +311,76 @@ class WindowTest {
             onNodeWithText("Update").assertExists()
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("update.png").toFile())
         }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the pile page shows a line of each item, and the pencil opens it whole to edit or remove`() {
+        val long = (1..8).joinToString("\n") { "Line $it of the trip plan" }
+        home.pile.add(long)
+        home.pile.add("Decide on the gym membership")
+        val model = model()
+        model.settle()
+        runComposeUiTest {
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model) } }
+            onNodeWithContentDescription("Menu").performClick()
+            waitForIdle()
+            onNodeWithText("Pile 2").performClick()
+            waitForIdle()
+            val layouts = mutableListOf<TextLayoutResult>()
+            onNodeWithText("Line 1 of the trip plan", substring = true, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+            assertEquals(1, layouts.single().lineCount, "one line of eight")
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("pile-long.png").toFile())
+            // The rest is cut with an ellipsis, which Compose on the desktop draws without saying so.
+            assertTrue(layouts.single().getLineEnd(0, visibleEnd = true) < layouts.single().layoutInput.text.length, "the line is cut")
+            onNodeWithContentDescription("Open item 1").performClick()
+            waitForIdle()
+            assertEquals(long, model.opened)
+        }
+        runComposeUiTest {
+            setContent { Box(Modifier.size(420.dp, 480.dp)) { model.opened?.let { ItemScreen(model, it) } } }
+            onNodeWithText("ITEM 1 OF 2").assertExists()
+            onNodeWithText("Line 8 of the trip plan", substring = true).assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("item.png").toFile())
+            onNodeWithText("Edit").performClick()
+            waitForIdle()
+            onNode(hasSetTextAction()).performTextReplacement("Book the train to Girona")
+            onNodeWithText("Save").performClick()
+            waitForIdle()
+            assertEquals(listOf("Book the train to Girona", "Decide on the gym membership"), home.pile.items())
+            assertEquals("Book the train to Girona", model.opened)
+            onNodeWithText("Remove").performClick()
+            waitForIdle()
+            onNodeWithText("Remove").performClick()
+            waitForIdle()
+            assertEquals(listOf("Decide on the gym membership"), home.pile.items())
+            assertNull(model.opened)
+        }
+    }
+
+    @Test
+    fun `the item in its mouth cannot be edited until the person answers`() {
+        home.pile.add("Reply to the landlord")
+        home.pile.add("Decide on the gym membership")
+        val model = model(bite)
+        model.settle()
+        model.wake()
+        model.settle()
+
+        assertFalse(model.canEdit("Reply to the landlord"))
+        assertTrue(model.canEdit("Decide on the gym membership"))
+        model.edit("Reply to the landlord", "Something else")
+        assertEquals(listOf("Reply to the landlord", "Decide on the gym membership"), home.pile.items())
+    }
+
+    @Test
+    fun `once it ate for the day, it sleeps below its branch until tomorrow`() {
+        val awake = Portrait.frames(0)
+        val asleep = Portrait.frames(0, asleep = true)
+
+        assertTrue(asleep.any { frame -> frame.any { 'z' in it || 'Z' in it } }, "the z's float up")
+        assertTrue(awake.none { frame -> frame.any { 'z' in it || 'Z' in it } })
+        assertEquals("Peresós is a baby, asleep until tomorrow (0 items finished).", Portrait.caption(0, asleep = true))
     }
 
     @OptIn(ExperimentalTestApi::class)

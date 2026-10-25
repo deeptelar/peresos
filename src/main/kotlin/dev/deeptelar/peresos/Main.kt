@@ -45,7 +45,7 @@ private suspend fun run(args: Array<String>) {
     when (args.firstOrNull()) {
         "feed" -> feed(pile, args.drop(1))
         "about" -> about(args.drop(1))
-        "pile" -> showPile(pile)
+        "pile" -> pile(pile, args.drop(1))
         "wear" -> wear(args.drop(1), sloth(Unused, pile).lastResult(home.config)?.state)
         "diary" -> showDiary(sloth(Unused, pile).lastResult(home.config)?.state)
         "place" -> HttpClient(CIO).use { client -> place(OpenMeteo(client), args.drop(1)) }
@@ -309,7 +309,7 @@ private suspend fun report(sloth: Sloth) {
     }
     println()
     val grew = sloth.rest == Rest.NONE && Portrait.phase(sloth.roundness) != Portrait.phase(sloth.roundness - 1)
-    showPortrait(sloth.roundness, grew, onTop = home.isFull(sloth))
+    showPortrait(sloth.roundness, grew, onTop = home.isFull(sloth), asleep = sloth.lastMeal == sloth.today)
 }
 
 /** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
@@ -324,8 +324,9 @@ private suspend fun showPortrait(
     roundness: Int,
     grew: Boolean = false,
     onTop: Boolean = false,
+    asleep: Boolean = false,
 ) {
-    val frames = Portrait.frames(roundness, onTop, home.wearing())
+    val frames = Portrait.frames(roundness, onTop, home.wearing(), asleep)
     if (animated) {
         repeat(2) {
             frames.forEach { frame ->
@@ -337,7 +338,7 @@ private suspend fun showPortrait(
     }
     frames.first().forEach { println("  $it") }
     println()
-    say(Portrait.caption(roundness, grew, onTop))
+    say(Portrait.caption(roundness, grew, onTop, asleep))
 }
 
 /**
@@ -417,21 +418,97 @@ private suspend fun wear(
     val on = home.wearing()
     say(if (on.isEmpty()) "It wears nothing but its fur." else "It wears: ${on.joinToString { it.name.lowercase() }}.")
     println()
-    showPortrait(sloth?.roundness ?: 0, onTop = home.isFull(sloth))
+    showPortrait(sloth?.roundness ?: 0, onTop = home.isFull(sloth), asleep = ateToday(sloth))
 }
 
-private fun showPile(pile: Pile) {
-    val items = pile.items()
+/**
+ * `peresos pile`: what is still on the pile, a line of each item. `peresos pile 3` shows
+ * the third whole, `peresos pile edit 3` opens it in the person's editor (or writes the text that
+ * follows in it), and `peresos pile remove 3` takes it off the pile uneaten. Its files stay when its
+ * words change.
+ */
+private suspend fun pile(
+    pile: FilePile,
+    args: List<String>,
+) {
+    val all = pile.items()
+    if (args.isEmpty()) return showPile(all)
+    val command = args.first().takeIf { it == "edit" || it == "remove" }
+    val number = args.getOrNull(if (command == null) 0 else 1)?.toIntOrNull()
+    if (all.isEmpty()) return say("The pile is empty.")
+    val item = number?.let { all.getOrNull(it - 1) } ?: return say("Which item? A number from 1 to ${all.size}, as in: peresos pile ${command?.plus(" ").orEmpty()}1")
+    if (command == null) return showItem(pile, item, number)
+    val awake = home.awake() ?: return say("Peresós is awake in its window, or in another terminal. Change the pile once it is done.")
+    awake.use {
+        val held = sloth(Unused, pile).lastResult(home.config).let { it as? GraphResult.Interrupted }?.state?.item
+        if (held?.trim() == item.trim()) return say("Peresós has item $number in its mouth. Answer it first: peresos")
+        if (command == "remove") {
+            pile.remove(item)
+            return say("Item $number is off the pile, uneaten: ${items(pile.items().size)} left.")
+        }
+        val typed = args.drop(2).joinToString(" ")
+        val words = typed.ifBlank { inEditor(words(item)) ?: return }
+        when {
+            words.trim() == words(item) -> say("Nothing changed.")
+            words.isBlank() && links(item).isEmpty() -> say("Left empty, item $number stays as it was. To take it off the pile: peresos pile remove $number")
+            else -> {
+                pile.replace(item, rewrite(item, words))
+                say("Item $number is changed.")
+            }
+        }
+    }
+}
+
+private fun showPile(items: List<String>) {
     if (items.isEmpty()) return say("The pile is empty.")
-    items.forEachIndexed { index, item -> println("  ${index + 1}. ${shown(item).lines().first().take(70)}") }
+    items.forEachIndexed { index, item ->
+        val line = line(item)
+        println("  ${"${index + 1}.".padEnd(4)}${if (line.length > 70) line.take(69).trimEnd() + "…" else line}")
+    }
+    println()
+    say("To see one whole: peresos pile 1. To change it: peresos pile edit 1, or remove 1.")
+}
+
+/** One item whole: the files it holds, where they are, and what the person wrote in it. */
+private fun showItem(
+    pile: FilePile,
+    item: String,
+    number: Int,
+) {
+    say("Item $number:")
+    links(item).forEach { say("${it.label}, in ${pile.path(it)}") }
+    words(item).takeIf { it.isNotEmpty() }?.let { println(); wrap(it).forEach(::say) }
+}
+
+/**
+ * Lets the person edit [text] in their editor, `VISUAL` or `EDITOR`, or else nano, vi or Notepad,
+ * and returns what they saved; `null` when there is no editor.
+ */
+private fun inEditor(text: String): String? {
+    val windows = System.getProperty("os.name").startsWith("Windows")
+    val editor = System.getenv("VISUAL") ?: System.getenv("EDITOR") ?: if (windows) "notepad" else listOf("nano", "vi").firstOrNull { onPath(it) != null }
+    if (editor == null) return null.also { say("There is no editor here. Type the new text instead: peresos pile edit 1 \"...\"") }
+    val file = File.createTempFile("peresos-item-", ".md")
+    try {
+        file.writeText(text + "\n")
+        // Through the shell, for an EDITOR with options, as code --wait.
+        val command = if (windows) listOf(editor, file.path) else listOf("sh", "-c", "$editor \"\$0\"", file.path)
+        ProcessBuilder(command).inheritIO().start().waitFor()
+        return file.readText().trim()
+    } finally {
+        file.delete()
+    }
 }
 
 private suspend fun showDiary(sloth: Sloth?) {
     if (sloth == null || sloth.diary.isEmpty()) return say("The diary is empty. Peresós has not eaten anything yet.")
     sloth.diary.forEach { entry -> wrap(entry.text, 70).forEachIndexed { index, line -> println("  ${if (index == 0) entry.day else " ".repeat(10)}  $line") } }
     println()
-    showPortrait(sloth.roundness, onTop = home.isFull(sloth))
+    showPortrait(sloth.roundness, onTop = home.isFull(sloth), asleep = ateToday(sloth))
 }
+
+/** It ate today, so it sleeps until tomorrow. */
+private fun ateToday(sloth: Sloth?): Boolean = sloth?.lastMeal == LocalDate.now().toString()
 
 /** The value of `--name=value` in [args], for trying another season or weather in the window. */
 private fun <T : Enum<T>> option(
@@ -476,7 +553,8 @@ private val USAGE =
       peresos about "fact"    tell it something about you that helps, like when you are home
       peresos                 wake it: it eats the oldest item and shows you the finished version
       peresos --lazy          it picks the easiest item instead, and does it the laziest way
-      peresos pile            what is still on the pile
+      peresos pile            what is still on the pile (peresos pile 3 shows the third whole)
+      peresos pile edit 3     change the third item in your editor (remove 3 takes it off the pile)
       peresos diary           what it wrote in its diary
       peresos wear sunglasses dress it up: sunglasses, cap, barretina, coffee (peresos wear nothing to undress)
       peresos window          open its home in a window, where you can do all of this with buttons; the terminal

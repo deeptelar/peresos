@@ -13,7 +13,10 @@ import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.window.application
 import dev.deeptelar.peresos.Home.Companion.model
 import dev.deeptelar.telar.GraphSnapshot
@@ -24,6 +27,8 @@ import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
+import java.awt.KeyboardFocusManager
+import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.MenuItem
 import java.awt.PopupMenu
@@ -158,13 +163,20 @@ private fun app(
                         addWindowFocusListener(
                             object : WindowAdapter() {
                                 override fun windowLostFocus(e: WindowEvent) {
-                                    // A click inside can take the focus away for a moment: hide only if it stays away.
-                                    Timer(250) {
-                                        if (!isFocused && !choosing.get()) {
-                                            hidden.set(System.currentTimeMillis())
-                                            shown = false
+                                    // A click inside can take the focus away for a while, longer when the computer is
+                                    // busy: hide only once the focus is in another app and the pointer is out of here.
+                                    Timer(250) { tick ->
+                                        val stays = choosing.get() || pointerInside() || KeyboardFocusManager.getCurrentKeyboardFocusManager().focusedWindow != null
+                                        when {
+                                            isFocused || !isVisible -> (tick.source as Timer).stop()
+                                            stays -> Unit
+                                            else -> {
+                                                (tick.source as Timer).stop()
+                                                hidden.set(System.currentTimeMillis())
+                                                shown = false
+                                            }
                                         }
-                                    }.apply { isRepeats = false }.start()
+                                    }.start()
                                 }
                             },
                         )
@@ -186,14 +198,26 @@ private fun app(
             },
             dispose = ComposeWindow::dispose,
         ) {
-            LaunchedEffect(shown) {
-                if (shown) {
+            // Also when the window of an item closes, so that a click elsewhere hides this one again.
+            LaunchedEffect(shown, model.opened == null) {
+                if (shown && model.opened == null) {
                     window.toFront()
                     window.requestFocus()
                 }
             }
             SlothScreen(model, onQuit = quit) {
                 if (tray) WindowDraggableArea { TitleBar(onHide = { shown = false }) }
+            }
+        }
+
+        // An item of the pile, whole, in a window with a frame, to read and edit it at ease.
+        model.opened?.let { item ->
+            Window(
+                onCloseRequest = { model.open(null) },
+                state = rememberWindowState(size = DpSize(420.dp, 480.dp), position = WindowPosition(Alignment.Center)),
+                title = "Peresós: an item of the pile",
+            ) {
+                ItemScreen(model, item)
             }
         }
     }
@@ -239,6 +263,9 @@ private fun notify(
             runCatching { ProcessBuilder("notify-send", "--app-name=Peresós", title, text).start() }.isSuccess
     if (!sent) icon?.displayMessage(title, text, TrayIcon.MessageType.INFO)
 }
+
+/** Whether the pointer is over this window. */
+private fun java.awt.Window.pointerInside(): Boolean = MouseInfo.getPointerInfo()?.location?.let(bounds::contains) == true
 
 /** The person chooses files in a dialog of the window, which takes the focus: the window stays meanwhile. */
 private val choosing = AtomicBoolean(false)

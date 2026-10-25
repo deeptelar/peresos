@@ -35,6 +35,7 @@ peresos doctor --fix    # checks everything and pulls Gemma 4 (gemma4:12b, about
 peresos about "I work from home on Tuesdays and Thursdays"   # facts it uses in its answers
 peresos feed "Jordi: coffee on Friday at 10, still on?"      # a message, decision, note or task
 peresos feed bill.jpg                                        # or a photo, a PDF or a text file
+                                                             # (photos and PDFs: right-click, Feed to Peresós)
 peresos                                                      # wake it: it eats the oldest item
 peresos --lazy                                               # or the easiest one, the laziest way
 peresos window                                               # its home in the tray
@@ -56,8 +57,10 @@ rounder as the pile shrinks.
 
 ![The four phases of Peresós, each with its own animation, and each asleep on top of the branch after eating the whole pile](docs/peresos-phases.gif)
 
-The pile is a plain text file, `~/.peresos/pile.md`, with items separated by `---`. Edit it by hand
-whenever you like. `peresos pile` and `peresos diary` show them.
+`peresos pile` lists the pile, and `peresos pile edit 3` opens the third item in your editor
+(`peresos pile remove 3` takes it off). In the window, the pencil next to an item does the same. A
+file you feed stays one item, and Gemma reads it. The pile itself is a plain text file,
+`~/.peresos/pile.md`, with items separated by `---`.
 
 **Without Ollama:** `peresos gemma off` brings each item as you wrote it, for yes, bin it or later.
 `peresos gemma on` brings Gemma back.
