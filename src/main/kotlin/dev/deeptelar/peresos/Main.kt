@@ -443,7 +443,7 @@ private suspend fun pile(
         val held = sloth(Unused, pile).lastResult(home.config).let { it as? GraphResult.Interrupted }?.state?.item
         if (held?.trim() == item.trim()) return say("Peresós has item $number in its mouth. Answer it first: peresos")
         if (command == "remove") {
-            pile.remove(item)
+            pile.replace(item, "", number - 1)
             return say("Item $number is off the pile, uneaten: ${items(pile.items().size)} left.")
         }
         val typed = args.drop(2).joinToString(" ")
@@ -452,7 +452,7 @@ private suspend fun pile(
             words.trim() == words(item) -> say("Nothing changed.")
             words.isBlank() && links(item).isEmpty() -> say("Left empty, item $number stays as it was. To take it off the pile: peresos pile remove $number")
             else -> {
-                pile.replace(item, rewrite(item, words))
+                pile.replace(item, rewrite(item, words), number - 1)
                 say("Item $number is changed.")
             }
         }
@@ -482,18 +482,30 @@ private fun showItem(
 
 /**
  * Lets the person edit [text] in their editor, `VISUAL` or `EDITOR`, or else nano, vi or Notepad,
- * and returns what they saved; `null` when there is no editor.
+ * and returns what they saved; `null` when there is no editor, or it quit with an error.
  */
 private fun inEditor(text: String): String? {
     val windows = System.getProperty("os.name").startsWith("Windows")
-    val editor = System.getenv("VISUAL") ?: System.getenv("EDITOR") ?: if (windows) "notepad" else listOf("nano", "vi").firstOrNull { onPath(it) != null }
+    val editor = (System.getenv("VISUAL") ?: System.getenv("EDITOR"))?.takeIf { it.isNotBlank() } ?: if (windows) "notepad" else listOf("nano", "vi").firstOrNull { onPath(it) != null }
     if (editor == null) return null.also { say("There is no editor here. Type the new text instead: peresos pile edit 1 \"...\"") }
     val file = File.createTempFile("peresos-item-", ".md")
     try {
         file.writeText(text + "\n")
-        // Through the shell, for an EDITOR with options, as code --wait.
-        val command = if (windows) listOf(editor, file.path) else listOf("sh", "-c", "$editor \"\$0\"", file.path)
-        ProcessBuilder(command).inheritIO().start().waitFor()
+        val saved = file.lastModified()
+        // Through the shell, for an EDITOR with options, as code --wait. Windows has none to trust with quotes.
+        val command = if (windows) editor.split(" ").filter { it.isNotEmpty() } + file.path else listOf("sh", "-c", "$editor \"\$0\"", file.path)
+        val exit =
+            try {
+                ProcessBuilder(command).inheritIO().start().waitFor()
+            } catch (e: IOException) {
+                return null.also { say("Could not open $editor: ${e.message}") }
+            }
+        if (exit != 0) return null.also { say("The editor quit with an error, so nothing changed.") }
+        // The Notepad of Windows 11 opens the file in a window it already has, and returns at once.
+        if (windows && file.lastModified() == saved) {
+            print("  Save it in the editor, then press Enter here.  ")
+            readlnOrNull()
+        }
         return file.readText().trim()
     } finally {
         file.delete()

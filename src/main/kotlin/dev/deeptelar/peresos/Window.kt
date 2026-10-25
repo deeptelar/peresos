@@ -309,10 +309,10 @@ private fun Pile(
         // One line of each item, cut with an ellipsis: the pencil opens it whole, in its own window.
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(model.pile) { index, item ->
-                Row(Modifier.fillMaxWidth().clickable { model.open(item) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { model.open(item, index) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelText("${index + 1}.", size = BODY, color = Ink.faint)
                     PixelText(line(item), Modifier.weight(1f), size = BODY, maxLines = 1)
-                    PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item) })
+                    PixelIconButton(OPEN_ICON, "Open item ${index + 1}", { model.open(item, index) })
                 }
             }
         }
@@ -329,11 +329,12 @@ internal fun ItemScreen(
     item: String,
 ) {
     val snapshot by model.session.snapshot.collectAsState()
-    val number = model.pile.indexOf(item) + 1
+    val number = model.openedAt.takeIf { model.pile.getOrNull(it) == item }?.plus(1) ?: (model.pile.indexOf(item) + 1)
     val editable = remember(snapshot, item) { model.canEdit(item) }
     var editing by remember(item) { mutableStateOf(false) }
     var text by remember(item) { mutableStateOf(words(item)) }
     var removing by remember(item) { mutableStateOf(false) }
+    var busy by remember(item) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().drawBehind { planks() }.padding(12.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().pixelBox(Ink.paper).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PixelText(if (number > 0) "ITEM $number OF ${model.pile.size}" else "ITEM", size = SMALL, color = Ink.faint)
@@ -351,18 +352,19 @@ internal fun ItemScreen(
                 }
             }
             if (!editable) Hint("It is in its mouth now. Answer it first.")
+            if (busy) Hint("Peresós is awake in a terminal. Try again once it is done.")
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
                 removing -> {
                     PixelText("Off the pile, uneaten?", Modifier.weight(1f), size = BODY, color = Ink.paper)
-                    PixelButton("Remove", Ink.red, { model.remove(item) }, small = true)
+                    PixelButton("Remove", Ink.red, { busy = !model.remove(item) }, small = true)
                     PixelButton("Keep", Ink.paperDark, { removing = false }, small = true)
                 }
                 editing -> {
                     PixelButton("Save", Ink.green, {
-                        model.edit(item, text)
-                        editing = false
+                        busy = !model.edit(item, text)
+                        if (!busy) editing = false
                     }, enabled = editable && (text.isNotBlank() || links(item).isNotEmpty()), small = true)
                     PixelButton("Cancel", Ink.paperDark, {
                         text = words(item)

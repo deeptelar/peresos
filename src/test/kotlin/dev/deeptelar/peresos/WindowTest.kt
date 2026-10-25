@@ -373,6 +373,30 @@ class WindowTest {
         assertEquals(listOf("Reply to the landlord", "Decide on the gym membership"), home.pile.items())
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `an edit waits while a terminal has it awake, and keeps what the person typed`() {
+        home.pile.add("Reply to the landlord")
+        val model = model()
+        model.settle()
+        model.open("Reply to the landlord", 0)
+        runComposeUiTest {
+            setContent { Box(Modifier.size(420.dp, 480.dp)) { model.opened?.let { ItemScreen(model, it) } } }
+            onNodeWithText("Edit").performClick()
+            waitForIdle()
+            onNode(hasSetTextAction()).performTextReplacement("Reply to the landlord: Tuesday")
+            home.awake()!!.use {
+                onNodeWithText("Save").performClick()
+                waitForIdle()
+                onNodeWithText("Peresós is awake in a terminal. Try again once it is done.").assertExists()
+                assertEquals(listOf("Reply to the landlord"), home.pile.items())
+            }
+            onNodeWithText("Save").performClick()
+            waitForIdle()
+            assertEquals(listOf("Reply to the landlord: Tuesday"), home.pile.items())
+        }
+    }
+
     @Test
     fun `once it ate for the day, it sleeps below its branch until tomorrow`() {
         val awake = Portrait.frames(0)

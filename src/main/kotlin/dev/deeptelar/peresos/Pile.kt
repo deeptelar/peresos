@@ -1,8 +1,13 @@
 package dev.deeptelar.peresos
 
 import dev.deeptelar.telar.agent.Attachment
+import java.io.IOException
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.ConcurrentHashMap
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.io.path.copyTo
@@ -23,10 +28,14 @@ interface Pile {
 
     fun remove(item: String)
 
-    /** Puts [with] where [item] is on the pile, as the person edited it. */
+    /**
+     * Puts [with] where [item] is on the pile, as the person edited it: at [at] when the item is
+     * there, as the same text can be on the pile twice, else where it first is.
+     */
     fun replace(
         item: String,
         with: String,
+        at: Int = -1,
     )
 
     fun moveToEnd(item: String)
@@ -65,7 +74,7 @@ class FilePile(val file: Path, val done: Path) : Pile {
     override fun items(): List<String> =
         if (file.exists()) file.readText().split(BETWEEN).map { it.trim() }.filter { it.isNotEmpty() } else emptyList()
 
-    override fun add(item: String) = write(items() + kept(item))
+    override fun add(item: String) = changing { write(items() + kept(item)) }
 
     /**
      * Puts the file at [source] on the pile, and returns its item: the file is copied in, so the
@@ -79,33 +88,57 @@ class FilePile(val file: Path, val done: Path) : Pile {
         if (file.exists() && Files.isSameFile(source, file)) throw IllegalArgumentException("$name is the pile itself.")
         if (food == Food.TEXT && source.readText().isBlank()) throw IllegalArgumentException("$name is empty.")
         val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-        val files = folder.resolve(FILES).createDirectories()
-        val stored = generateSequence(0) { it + 1 }.map { n -> "$stamp${if (n == 0) "" else "-$n"}-${name.replace(UNSAFE, "-")}" }.first { !files.resolve(it).exists() }
-        source.copyTo(files.resolve(stored))
-        val item = "${if (food == Food.PHOTO) "!" else ""}[${name.replace("]", "")}]($FILES/$stored)"
-        add(item)
-        return item
+        return changing {
+            val files = folder.resolve(FILES).createDirectories()
+            val stored = generateSequence(0) { it + 1 }.map { n -> "$stamp${if (n == 0) "" else "-$n"}-${name.replace(UNSAFE, "-")}" }.first { !files.resolve(it).exists() }
+            source.copyTo(files.resolve(stored))
+            val item = "${if (food == Food.PHOTO) "!" else ""}[${name.replace("]", "")}]($FILES/$stored)"
+            write(items() + item)
+            item
+        }
     }
 
-    override fun remove(item: String) {
-        val items = items()
-        val at = items.indexOf(item.trim())
-        if (at < 0) return
-        write(items.filterIndexed { index, _ -> index != at })
-        forget(item)
-    }
+    override fun remove(item: String) =
+        changing {
+            val items = items()
+            val at = items.indexOf(item.trim())
+            if (at >= 0) {
+                write(items.filterIndexed { index, _ -> index != at })
+                forget(item)
+            }
+        }
 
     override fun replace(
         item: String,
         with: String,
-    ) {
-        if (with.isBlank()) return remove(item)
+        at: Int,
+    ) = changing {
         val items = items()
-        val at = items.indexOf(item.trim())
-        if (at < 0) return
-        write(items.mapIndexed { index, it -> if (index == at) kept(with) else it })
-        forget(item)
+        val where = at.takeIf { items.getOrNull(it) == item.trim() } ?: items.indexOf(item.trim())
+        when {
+            where < 0 -> Unit
+            with.isBlank() -> {
+                write(items.filterIndexed { index, _ -> index != where })
+                forget(item)
+            }
+            else -> {
+                write(items.mapIndexed { index, it -> if (index == where) kept(with) else it })
+                forget(item)
+            }
+        }
     }
+
+    /**
+     * Changes the pile while it holds `pile.lock` next to it, so that a terminal and the window never
+     * write it at the same time, and neither loses what the other wrote.
+     */
+    private fun <T> changing(change: () -> T): T =
+        synchronized(GUARDS.computeIfAbsent(file.toAbsolutePath().normalize()) { Any() }) {
+            folder.createDirectories()
+            FileChannel.open(folder.resolve(LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+                channel.lock().use { change() }
+            }
+        }
 
     /** Deletes the copies of the files of [item] that left the pile, unless another item holds them too. */
     private fun forget(item: String) {
@@ -116,10 +149,11 @@ class FilePile(val file: Path, val done: Path) : Pile {
     /** The full path of the copy that [link] points to, to open it. */
     fun path(link: Attached): Path = folder.resolve(link.path)
 
-    override fun moveToEnd(item: String) {
-        val items = items()
-        if (item.trim() in items) write(items - item.trim() + item.trim())
-    }
+    override fun moveToEnd(item: String) =
+        changing {
+            val items = items()
+            if (item.trim() in items) write(items - item.trim() + item.trim())
+        }
 
     override fun keep(day: String, item: String, bite: Bite) {
         done.createDirectories()
@@ -172,14 +206,27 @@ class FilePile(val file: Path, val done: Path) : Pile {
         return Plate(text, attachments)
     }
 
+    /** Writes the pile whole, into a file next to it that then takes its place: a reader never sees half of it. */
     private fun write(items: List<String>) {
         file.parent?.let { Files.createDirectories(it) }
-        file.writeText(items.joinToString(SEPARATOR, postfix = if (items.isEmpty()) "" else "\n"))
+        val next = file.resolveSibling("${file.name}.next")
+        next.writeText(items.joinToString(SEPARATOR, postfix = if (items.isEmpty()) "" else "\n"))
+        try {
+            Files.move(next, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: IOException) {
+            // Windows refuses while another program reads the pile: then it writes it in place.
+            file.writeText(next.readText())
+            next.deleteIfExists()
+        }
     }
 
     private companion object {
         const val SEPARATOR = "\n---\n"
         const val FILES = "files"
+        const val LOCK = "pile.lock"
+
+        /** One per pile in this process, which the lock of the file does not keep out. */
+        val GUARDS = ConcurrentHashMap<Path, Any>()
 
         /** A line with `---` alone, also one the person typed with spaces around it. */
         val BETWEEN = Regex("(?m)^\\s*---\\s*$")
