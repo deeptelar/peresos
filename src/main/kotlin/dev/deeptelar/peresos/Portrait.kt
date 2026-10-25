@@ -6,8 +6,8 @@ import kotlin.math.floor
 /**
  * The sloth as pixel art, hanging from its branch. It is born a baby and grows bigger and rounder
  * with every item it finishes, and in each phase it does something different while you look. When
- * it has eaten the whole pile, it climbs on top of its branch and sleeps there. It can wear the
- * items of the [Item] wardrobe.
+ * it has eaten the whole pile, it climbs on top of its branch and sleeps there; once it ate for the
+ * day, it sleeps hanging below it. It can wear the items of the [Item] wardrobe.
  */
 object Portrait {
     /** How grown up the sloth is, and what it does in its animation. */
@@ -31,26 +31,30 @@ object Portrait {
         roundness: Int,
         onTop: Boolean = false,
         wearing: Collection<Item> = emptyList(),
-    ): List<String> = frames(roundness, onTop, wearing).first()
+        asleep: Boolean = false,
+    ): List<String> = frames(roundness, onTop, wearing, asleep).first()
 
     /**
      * The frames of the animation, to show one after another and then again. All have the same size.
      *
      * @param onTop it ate the whole pile, and sleeps lying on top of its branch instead of hanging below it.
      * @param wearing the items it has on.
+     * @param asleep it ate today, and sleeps below its branch until tomorrow.
      */
     fun frames(
         roundness: Int,
         onTop: Boolean = false,
         wearing: Collection<Item> = emptyList(),
-    ): List<List<String>> = drawings(roundness, onTop, wearing).map { (canvas, _) -> canvas.render() }
+        asleep: Boolean = false,
+    ): List<List<String>> = drawings(roundness, onTop, wearing, asleep).map { (canvas, _) -> canvas.render() }
 
     /** The same frames as [frames], as pixels for a window. */
     internal fun pictures(
         roundness: Int,
         onTop: Boolean = false,
         wearing: Collection<Item> = emptyList(),
-    ): List<Picture> = drawings(roundness, onTop, wearing).map { (canvas, branch) -> canvas.picture(branch) }
+        asleep: Boolean = false,
+    ): List<Picture> = drawings(roundness, onTop, wearing, asleep).map { (canvas, branch) -> canvas.picture(branch) }
 
     /**
      * The sloth while someone touches it, for as long as it reacts: a pat on the head closes its eyes,
@@ -62,6 +66,7 @@ object Portrait {
         wearing: Collection<Item>,
         touch: Touch,
         fedUp: Boolean = false,
+        asleep: Boolean = false,
     ): Picture {
         val pose =
             when {
@@ -69,7 +74,7 @@ object Portrait {
                 touch == Touch.BELLY -> Pose(mouth = 2, kick = 1)
                 else -> Pose(mouth = 1)
             }
-        return drawings(roundness, onTop, wearing, listOf(pose)).single().let { (canvas, branch) -> canvas.picture(branch) }
+        return drawings(roundness, onTop, wearing, asleep, listOf(pose)).single().let { (canvas, branch) -> canvas.picture(branch) }
     }
 
     /** Which part of the sloth a pixel of its picture is, or `null` for its branch and the air around it. */
@@ -95,10 +100,16 @@ object Portrait {
         roundness: Int,
         grew: Boolean = false,
         onTop: Boolean = false,
+        asleep: Boolean = false,
     ): String {
         val finished = "$roundness ${if (roundness == 1) "item" else "items"} finished"
         val phase = phase(roundness)
-        val doing = if (onTop) "asleep on top of its branch, full" else phase.doing
+        val doing =
+            when {
+                onTop -> "asleep on top of its branch, full"
+                asleep -> "asleep until tomorrow"
+                else -> phase.doing
+            }
         return "${if (grew) "It grew! Peresós is now" else "Peresós is"} ${phase.title}, $doing ($finished)."
     }
 
@@ -107,13 +118,14 @@ object Portrait {
         roundness: Int,
         onTop: Boolean,
         wearing: Collection<Item>,
+        asleep: Boolean = false,
         only: List<Pose>? = null,
     ): List<Pair<Canvas, Int>> {
         val build = builds.getValue(phase(roundness))
         val room = wearing.maxOfOrNull { it.room } ?: 0
         val items = wearing.sortedBy { it.ordinal }
-        if (onTop) return (only ?: asleep).mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room) to build.height - 5 }
-        return (only ?: poses.getValue(phase(roundness))).mapIndexed { tick, pose -> draw(build, pose, tick, items, room) to 0 }
+        if (onTop) return (only ?: sleeping).mapIndexed { tick, pose -> drawOnTop(build, pose, tick, items, room) to build.height - 5 }
+        return (only ?: if (asleep) sleeping else poses.getValue(phase(roundness))).mapIndexed { tick, pose -> draw(build, pose, tick, items, room, asleep) to 0 }
     }
 
     /** The size of the picture, and of the head and the body in it, in pixels. Both ovals are around the middle column. */
@@ -147,19 +159,24 @@ object Portrait {
         )
 
     /** Fast asleep and breathing slowly, with the z's floating up. */
-    private val asleep = poses.getValue(Phase.ROUND)
+    private val sleeping = poses.getValue(Phase.ROUND)
 
-    /** Hanging below the branch. Items that need room get it above the branch, where a mug can stand. */
+    /**
+     * Hanging below the branch. Items that need room get it above the branch, where a mug can stand;
+     * [asleep], the z's get it to the right of the head.
+     */
     private fun draw(
         build: Build,
         pose: Pose,
         tick: Int,
         items: List<Item>,
         room: Int,
+        asleep: Boolean = false,
     ): Canvas {
-        val canvas = Canvas(build.width, build.height, top = room)
         val cx = build.width / 2 // the face sits on the two middle columns, cx - 1 and cx
         val head = build.head
+        val z = floor(cx + head.rx).toInt() + build.arm + 2
+        val canvas = Canvas(build.width, build.height, top = room, right = if (asleep) maxOf(0, z + 3 - build.width) else 0)
         val body = build.body
         val breath = pose.breath * 0.5
 
@@ -180,7 +197,7 @@ object Portrait {
         canvas.closeGaps(head.y.toInt(), body.y.toInt())
         canvas.head(cx, head)
         canvas.face(cx, head, build.eyes, pose)
-        canvas.z(floor(cx + head.rx).toInt() + build.arm + 2, head.y.toInt() / 2, pose)
+        canvas.z(z, head.y.toInt() / 2, pose)
         val spot = Spot(cx, head, build.eyes, branch = 0, shelf = build.width - 6, tick = tick)
         items.forEach { canvas.wear(it, spot) }
         return canvas

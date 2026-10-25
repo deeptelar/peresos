@@ -284,9 +284,11 @@ class SoakTest {
 
     /** Clicks a pixel of the sloth, whatever its size and wherever it hangs or lies, and it answers. */
     private fun ComposeUiTest.touch() {
-        val sloth = model.session.snapshot.value.state // as the window draws it
+        val snapshot = model.session.snapshot.value // as the window draws it
+        val sloth = snapshot.state
         val onTop = model.isFull(sloth)
-        val still = Portrait.pictures(sloth?.roundness ?: 0, onTop, model.wearing).first()
+        val asleep = snapshot is GraphSnapshot.Completed && model.ateToday(sloth)
+        val still = Portrait.pictures(sloth?.roundness ?: 0, onTop, model.wearing, asleep).first()
         val stage = stage(WINDOW_SIZE.width.value * density.density, HABITAT_HEIGHT.value * density.density, still, onTop)
         val pixels = still.pixels.flatMapIndexed { y, line -> line.indices.filter { Portrait.part(line[it]) != null }.map { it to y } }
         val (x, y) = pixels.random(random)

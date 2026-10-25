@@ -309,7 +309,7 @@ private suspend fun report(sloth: Sloth) {
     }
     println()
     val grew = sloth.rest == Rest.NONE && Portrait.phase(sloth.roundness) != Portrait.phase(sloth.roundness - 1)
-    showPortrait(sloth.roundness, grew, onTop = home.isFull(sloth))
+    showPortrait(sloth.roundness, grew, onTop = home.isFull(sloth), asleep = sloth.lastMeal == sloth.today)
 }
 
 /** Whether a person watches the output in a terminal, so the portrait can move. Not when it goes to a file or a pipe. */
@@ -324,8 +324,9 @@ private suspend fun showPortrait(
     roundness: Int,
     grew: Boolean = false,
     onTop: Boolean = false,
+    asleep: Boolean = false,
 ) {
-    val frames = Portrait.frames(roundness, onTop, home.wearing())
+    val frames = Portrait.frames(roundness, onTop, home.wearing(), asleep)
     if (animated) {
         repeat(2) {
             frames.forEach { frame ->
@@ -337,7 +338,7 @@ private suspend fun showPortrait(
     }
     frames.first().forEach { println("  $it") }
     println()
-    say(Portrait.caption(roundness, grew, onTop))
+    say(Portrait.caption(roundness, grew, onTop, asleep))
 }
 
 /**

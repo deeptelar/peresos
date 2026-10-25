@@ -65,15 +65,17 @@ internal fun SlothScreen(
     val sloth = snapshot.state
     val tick = rememberTick()
     val onTop = model.isFull(sloth)
+    // Once it ate for the day, it sleeps until tomorrow.
+    val asleep = snapshot is GraphSnapshot.Completed && model.ateToday(sloth)
     val roundness = sloth?.roundness ?: 0
-    val frames = remember(roundness, onTop, model.wearing) { Portrait.pictures(roundness, onTop, model.wearing) }
+    val frames = remember(roundness, onTop, model.wearing, asleep) { Portrait.pictures(roundness, onTop, model.wearing, asleep) }
     var page by remember { mutableStateOf(Page.NOW) }
     var menu by remember { mutableStateOf(false) }
     // The last touch, kept after its reaction ends, to count the touches in a row. The reaction ends
     // with the first tick after it, which draws the screen again.
     var last by remember { mutableStateOf<Reaction?>(null) }
     val reaction = last?.takeIf { System.currentTimeMillis() - it.at < REACTION_MS }
-    val touched = remember(reaction, frames) { reaction?.let { Portrait.touched(roundness, onTop, model.wearing, it.touch, it.fedUp) } }
+    val touched = remember(reaction, frames) { reaction?.let { Portrait.touched(roundness, onTop, model.wearing, it.touch, it.fedUp, asleep) } }
     Column(Modifier.fillMaxSize().drawBehind { planks() }) {
         header()
         Box(Modifier.fillMaxWidth().height(HABITAT_HEIGHT)) {
