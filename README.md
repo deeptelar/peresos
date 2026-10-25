@@ -7,6 +7,8 @@ A sloth that eats one item of your backlog a day. You feed it what you keep putt
 
 *Peresós* is Catalan for sloth, and for lazy.
 
+How and why I built it: [the post on DEV](https://dev.to/cuento3yllevo2/peresos-a-sloth-that-eats-one-item-of-my-backlog-a-day-with-gemma-4-on-my-own-gpu-j6a).
+
 ## Install
 
 ```bash
