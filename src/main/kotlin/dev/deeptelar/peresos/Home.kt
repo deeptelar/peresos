@@ -15,6 +15,7 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
 import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -49,6 +50,7 @@ class Home(val path: Path) {
     private val windowFile = path.resolve("window.lock")
     private val callFile = path.resolve("window.call")
     private val gemmaFile = path.resolve("gemma")
+    private val smallFile = path.resolve("small")
 
     /** What you told it about yourself, one fact per line. */
     fun about(): String = aboutFile.readTextOrEmpty()
@@ -91,6 +93,14 @@ class Home(val path: Path) {
     fun useGemma(on: Boolean) {
         path.createDirectories()
         gemmaFile.writeText(if (on) "on\n" else "off\n")
+    }
+
+    /** Whether the window shows only the sloth, folded under its title bar, as the person left it. */
+    fun small(): Boolean = smallFile.exists()
+
+    fun keepSmall(on: Boolean) {
+        path.createDirectories()
+        if (on) smallFile.writeText("") else smallFile.deleteIfExists()
     }
 
     /** Changes when any file of the home changes, so a window can tell that the terminal fed, dressed or woke it. */

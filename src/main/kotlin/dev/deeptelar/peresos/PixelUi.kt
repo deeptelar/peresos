@@ -188,6 +188,12 @@ internal val MENU_ICON = listOf("#######", ".......", "#######", ".......", "###
 /** A pencil, to open an item of the pile and edit it. */
 internal val OPEN_ICON = listOf(".....##", "....###", "...###.", "..###..", ".###...", "##.....", "#......")
 
+/** A point up, to fold the window up to the sloth. */
+internal val FOLD_ICON = listOf(".......", "...#...", "..###..", ".##.##.", "##...##")
+
+/** A point down, to open the folded window again. */
+internal val UNFOLD_ICON = listOf("##...##", ".##.##.", "..###..", "...#...", ".......")
+
 /** A cross, to hide the window. */
 internal val CLOSE_ICON = listOf("#...#", ".#.#.", "..#..", ".#.#.", "#...#")
 

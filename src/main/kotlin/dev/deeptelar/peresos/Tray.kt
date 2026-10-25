@@ -113,11 +113,12 @@ private fun app(
                 seen = now
             }
         }
-        // Gemma takes a minute: when it is done and the window is hidden, the desktop says so.
+        // Gemma takes a minute: when it is done and the window is hidden, or shows only the sloth, the desktop says so.
         LaunchedEffect(Unit) {
             var before = model.session.snapshot.value
             model.session.snapshot.collect { now ->
-                if (before is GraphSnapshot.Running && !shown) news(now, model)?.let { (title, text) -> notify(icon, title, text) }
+                val small = tray && model.small
+                if (before is GraphSnapshot.Running && (!shown || small)) news(now, model, small)?.let { (title, text) -> notify(icon, title, text) }
                 before = now
             }
         }
@@ -185,7 +186,7 @@ private fun app(
                     isResizable = false
                     // In the units of the screen at its scale, like dp: at 150 %, 600 is 900 pixels.
                     val screen = GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds
-                    size = Dimension(WINDOW_SIZE.width.value.toInt(), min(WINDOW_SIZE.height.value.toInt(), screen.height - 24))
+                    size = Dimension(WINDOW_SIZE.width.value.toInt(), if (tray && model.small) SMALL_HEIGHT.value.toInt() else min(WINDOW_SIZE.height.value.toInt(), screen.height - 24))
                     location = corner(size)
                     defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
                     addWindowListener(
@@ -206,8 +207,19 @@ private fun app(
                     window.requestFocus()
                 }
             }
-            SlothScreen(model, onQuit = quit) {
-                if (tray) WindowDraggableArea { TitleBar(onHide = { shown = false }) }
+            // Folded up to the sloth, or open again: the edge nearest the tray stays where it is.
+            if (tray) {
+                LaunchedEffect(model.small) {
+                    val screen = GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds
+                    val height = if (model.small) SMALL_HEIGHT.value.toInt() else min(WINDOW_SIZE.height.value.toInt(), screen.height - 24)
+                    if (window.height == height) return@LaunchedEffect
+                    val low = window.y + window.height / 2 > screen.y + screen.height / 2
+                    val top = if (low) window.y + window.height - height else window.y
+                    window.setBounds(window.x, top.coerceIn(screen.y, maxOf(screen.y, screen.y + screen.height - height)), window.width, height)
+                }
+            }
+            SlothScreen(model, onQuit = quit, small = tray && model.small) {
+                if (tray) WindowDraggableArea { TitleBar(model, onHide = { shown = false }) }
             }
         }
 
@@ -252,11 +264,13 @@ private fun mood(
 private fun news(
     snapshot: GraphSnapshot<Sloth>,
     model: SlothModel,
+    small: Boolean,
 ): Pair<String, String>? {
     val bite = snapshot.state?.bite
+    val where = if (small) "the arrow over the sloth" else "the tray"
     return when {
-        snapshot is GraphSnapshot.Interrupted && bite != null -> "Peresós chewed something" to "“${bite.title}”: take it, bin it, or later. Open it from the tray."
-        snapshot is GraphSnapshot.Stopped && snapshot.cause != null -> "Peresós stopped halfway" to (model.trouble ?: "Try again from the tray.")
+        snapshot is GraphSnapshot.Interrupted && bite != null -> "Peresós chewed something" to "“${bite.title}”: take it, bin it, or later. Open it from $where."
+        snapshot is GraphSnapshot.Stopped && snapshot.cause != null -> "Peresós stopped halfway" to (model.trouble ?: "Try again from $where.")
         else -> null
     }
 }
