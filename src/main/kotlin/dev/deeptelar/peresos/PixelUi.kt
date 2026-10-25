@@ -18,7 +18,9 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -31,7 +33,9 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -243,9 +247,15 @@ internal fun PixelField(
     modifier: Modifier = Modifier,
     maxLines: Int = 4,
 ) {
+    // The cursor starts at the end, to add to what is there.
+    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    if (field.text != value) field = TextFieldValue(value, TextRange(value.length))
     BasicTextField(
-        value,
-        onChange,
+        field,
+        {
+            field = it
+            if (it.text != value) onChange(it.text)
+        },
         modifier.pixelBox(Ink.field, raised = false),
         textStyle = TextStyle(fontFamily = PixelFont, fontSize = BODY, color = Ink.text, lineHeight = BODY * 1.25f, fontFeatureSettings = PLAIN),
         cursorBrush = SolidColor(Ink.text),

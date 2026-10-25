@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -345,7 +348,10 @@ internal fun ItemScreen(
                 }
             }
             if (editing) {
-                PixelField(text, { text = it }, if (links(item).isEmpty()) "What it is" else "A note for Gemma", Modifier.weight(1f).fillMaxWidth(), maxLines = Int.MAX_VALUE)
+                val focus = remember { FocusRequester() }
+                PixelField(text, { text = it }, if (links(item).isEmpty()) "What it is" else "A note for Gemma", Modifier.weight(1f).fillMaxWidth().focusRequester(focus), maxLines = Int.MAX_VALUE)
+                // Ready to type, without a click in the field first.
+                LaunchedEffect(Unit) { focus.requestFocus() }
             } else {
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                     SelectionContainer { PixelText(words(item).ifEmpty { "No words, only the file." }, size = BODY, color = if (words(item).isEmpty()) Ink.faint else Ink.text) }
