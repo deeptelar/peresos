@@ -92,7 +92,7 @@ class FilePile(val file: Path, val done: Path) : Pile {
             val files = folder.resolve(FILES).createDirectories()
             val stored = generateSequence(0) { it + 1 }.map { n -> "$stamp${if (n == 0) "" else "-$n"}-${name.replace(UNSAFE, "-")}" }.first { !files.resolve(it).exists() }
             source.copyTo(files.resolve(stored))
-            val item = "${if (food == Food.PHOTO) "!" else ""}[${name.replace("]", "")}]($FILES/$stored)"
+            val item = "${if (food == Food.PHOTO) "!" else ""}[${name.replace(BRACKETS, "")}]($FILES/$stored)"
             write(items() + item)
             item
         }
@@ -236,6 +236,9 @@ class FilePile(val file: Path, val done: Path) : Pile {
 
         /** [item] as it goes in the file: a line of `---` in it becomes `***`, a line in Markdown too. */
         fun kept(item: String): String = item.trim().replace(CUT, "***")
+
+        /** The brackets of a name, which would end its link in Markdown. */
+        val BRACKETS = Regex("[\\[\\]]")
 
         /** What a name of a file may not keep, to stay a plain link in Markdown. */
         val UNSAFE = Regex("[^\\p{L}\\p{N}._-]+")
