@@ -13,6 +13,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,6 +42,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import java.awt.image.BufferedImage
 import java.io.File
 import java.net.ConnectException
 import java.nio.file.Files
@@ -45,6 +50,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ThreadLocalRandom
+import javax.imageio.ImageIO
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.fileSize
@@ -91,6 +97,7 @@ class SoakTest {
     private val facts = mutableListOf<String>()
     private var lastWake: LocalDate? = null
     private var yes = 0
+    private var copies = 0 // of the files of the items taken, next to their finished versions
     private var no = 0
     private var later = 0
     private var tries = 0
@@ -117,7 +124,8 @@ class SoakTest {
     @Test
     fun `a long walk through the window`() =
         runComposeUiTest(testTimeout = 24.hours) {
-            setContent { Box(Modifier.size(WINDOW_SIZE)) { SlothScreen(model, night) } }
+            // The window of an item, while one is open, in place of the window: the person works in it.
+            setContent { Box(Modifier.size(WINDOW_SIZE)) { model.opened?.let { ItemScreen(model, it) } ?: SlothScreen(model, night) } }
             settle()
             val fds = mutableListOf<Int>()
             try {
@@ -169,6 +177,9 @@ class SoakTest {
                 2 to ("terminal wakes" to { terminalWakes() }),
                 2 to ("edit the pile by hand" to { editByHand() }),
                 2 to ("answer and feed at once" to { answerAndFeed() }),
+                3 to ("feed a file" to { feedFile() }),
+                4 to ("edit an item" to { editItem() }),
+                2 to ("terminal edits an item" to { terminalEdits() }),
             ) +
                 // Ollama stopping halfway: only on the scripted model, so the real one is left alone.
                 if (gemma) emptyList() else listOf(2 to ("ollama stops" to { kitchen.down = true }), 4 to ("ollama starts" to { kitchen.down = false }))
@@ -181,7 +192,78 @@ class SoakTest {
     private fun ComposeUiTest.feed(text: String) {
         tab("Pile ${pile.size}")
         type(0, text, "Feed it")
-        if (text.isNotBlank()) pile += text.trim()
+        if (text.isNotBlank()) pile += kept(text)
+    }
+
+    /** A Markdown file with lines of `---` in it, or a photo, from the window's dialog: one item each. */
+    private fun ComposeUiTest.feedFile() {
+        val file = files.random(random)
+        tab("Pile ${pile.size}")
+        model.feedFiles(listOf(file)) // what the dialog of the window hands over
+        waitForIdle()
+        val item = home.pile.items().last()
+        assertEquals(if (file.toString().endsWith(".png")) "Photo: ${file.fileName}" else "Text: ${file.fileName}", shown(item))
+        pile += item
+    }
+
+    /**
+     * Opens an item with its pencil, and edits it, removes it or closes it; or the terminal removes it
+     * meanwhile and its window closes. The item it holds cannot be changed.
+     */
+    private fun ComposeUiTest.editItem() {
+        if (pile.isEmpty()) return
+        tab("Pile ${pile.size}")
+        val at = random.nextInt(pile.size)
+        val item = pile[at]
+        onAllNodes(hasScrollToIndexAction())[0].performScrollToIndex(at)
+        waitForIdle()
+        click("Open item ${at + 1}", description = true)
+        assertEquals(item, model.opened)
+        assertEquals(at, model.openedAt)
+        assertExists("ITEM ${at + 1} OF ${pile.size}")
+        val held = state()?.item?.trim() == item.trim() && model.session.snapshot.value !is GraphSnapshot.Completed
+        if (held) {
+            onNodeWithText("Edit").assertIsNotEnabled()
+            assertExists("It is in its mouth now. Answer it first.")
+            return click("Close")
+        }
+        when (random.nextInt(5)) {
+            0, 1 -> {
+                val words = (items + oddItems + "Pack for the trip:\n---\nsocks").random(random)
+                click("Edit")
+                onAllNodes(hasSetTextAction())[0].performTextReplacement(words)
+                waitForIdle()
+                if (words.isBlank() && links(item).isEmpty()) {
+                    onNodeWithText("Save").assertIsNotEnabled()
+                    click("Cancel")
+                } else {
+                    click("Save")
+                    pile[at] = kept(rewrite(item, words))
+                    assertEquals(pile[at], model.opened, "the edited item stays open")
+                }
+                click("Close")
+            }
+            2 -> {
+                click("Remove")
+                click("Remove")
+                pile.removeAt(at)
+            }
+            3 -> {
+                // The terminal takes it off while it is open: its window closes, or shows the same text where it is still.
+                assertNotNull(home.awake()).use { home.pile.replace(item, "", at) }
+                pile.removeAt(at)
+                val deadline = System.currentTimeMillis() + 10_000
+                while (model.pile != pile || (model.opened != null && model.pile.getOrNull(model.openedAt) != item)) {
+                    if (System.currentTimeMillis() > deadline) fail("The window of the removed item stays open: ${model.opened} at ${model.openedAt}")
+                    Thread.sleep(50)
+                }
+                waitForIdle()
+                if (item in pile) click("Close") else assertEquals(null, model.opened, "its window closed")
+            }
+            else -> click("Close")
+        }
+        assertEquals(null, model.opened)
+        waitForIdle()
     }
 
     /** Wake it, or Something easy when [lazy], or Try again after Ollama stopped it halfway. */
@@ -203,7 +285,8 @@ class SoakTest {
         }
         afterRun()
         when {
-            picking && stopped -> mouth = null // Ollama stopped before it could pick
+            // Ollama stopped before it could pick; with one item on the pile it picks without Gemma, and holds it.
+            picking && stopped -> mouth = state()?.item
             picking -> mouth = picked(lastLazy)
             !resuming -> mouth = pile.first()
         }
@@ -215,7 +298,7 @@ class SoakTest {
         val item = assertNotNull(state()?.item)
         val choices = pile.filter { it != lastLazy }.ifEmpty { pile }.take(30)
         assertTrue(item in choices, "it picked an item of the pile, and not the one of last time")
-        if (!gemma) assertEquals(choices.minBy { it.replace("\n", " ").take(300).length }, item, "it picked the easiest")
+        if (!gemma) assertEquals(choices.minBy { shown(it).replace("\n", " ").take(300).length }, item, "it picked the easiest")
         assertNotNull(state()?.why, "it says why")
         return item
     }
@@ -234,7 +317,7 @@ class SoakTest {
     private fun swallowed(answer: Answer) {
         val item = checkNotNull(mouth)
         when (answer) {
-            Answer.YES -> yes++.also { pile.remove(item) }
+            Answer.YES -> yes++.also { pile.remove(item) }.also { copies += links(item).size }
             Answer.NO -> no++.also { pile.remove(item) }
             Answer.LATER -> later++.also { if (pile.remove(item)) pile += item }
             Answer.AGAIN -> tries++
@@ -390,6 +473,26 @@ class SoakTest {
         synced()
     }
 
+    /** `peresos pile edit 3 "..."` or `peresos pile remove 3`, as Main does them, unless it holds that item. */
+    private fun ComposeUiTest.terminalEdits() {
+        if (pile.isEmpty()) return
+        val at = random.nextInt(pile.size)
+        val item = pile[at]
+        assertNotNull(home.awake()).use {
+            val held = (runBlocking { terminal.lastResult(home.config) } as? GraphResult.Interrupted)?.state?.item
+            if (held?.trim() == item.trim()) return
+            if (random.nextBoolean()) {
+                home.pile.replace(item, "", at)
+                pile.removeAt(at)
+            } else {
+                val words = items.random(random) + " (edited)"
+                home.pile.replace(item, rewrite(item, words), at)
+                pile[at] = kept(rewrite(item, words))
+            }
+        }
+        synced()
+    }
+
     /** The person opens pile.md in an editor, tidies it and saves it. */
     private fun ComposeUiTest.editByHand() {
         if (random.nextInt(3) == 0 && pile.size > 1) pile.add(pile.removeAt(random.nextInt(pile.size)))
@@ -428,7 +531,7 @@ class SoakTest {
         assertEquals(wearing, model.wearing.toSet())
         assertEquals(facts, home.about().lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") })
         val dones = home.pile.done.takeIf { it.exists() }?.listDirectoryEntries()?.size ?: 0
-        assertEquals(yes, dones, "a file in done for every yes")
+        assertEquals(yes + copies, dones, "a file in done for every yes, and the files it held")
         assertNotNull(home.awake(), "the lock is free between actions").close()
 
         tab("Now")
@@ -452,8 +555,9 @@ class SoakTest {
                 assertExists(bite.title)
                 assertExists("Take it")
                 sloth.why?.let { assertExists("Why: $it") }
-                if (!gemma) assertTrue(bite.finished.startsWith("Done: ${mouth!!.lines().first()}"), "it chewed the item in its mouth")
-                assertTrue(mouth!! in kitchen.lastChew, "Gemma was asked about the item in its mouth")
+                val served = home.pile.serve(mouth!!).text // a file's item goes to Gemma as what the file says
+                if (!gemma) assertTrue(bite.finished.startsWith("Done: ${served.lines().first()}"), "it chewed the item in its mouth")
+                assertTrue(served in kitchen.lastChew, "Gemma was asked about the item in its mouth")
                 kitchen.aboutThen.lines().filter { it.isNotBlank() }.forEach { assertTrue(it in kitchen.lastChew, "it told Gemma: $it") }
             }
             else -> {
@@ -520,11 +624,17 @@ class SoakTest {
         click(title)
     }
 
-    /** Clicks the button or tab with [text], which the person must see without scrolling. */
-    private fun ComposeUiTest.click(text: String) {
-        onAllNodesWithText(text)[0].assertIsDisplayed().performClick()
+    /** Clicks the button or tab with [text], or with that [description], which the person must see without scrolling. */
+    private fun ComposeUiTest.click(
+        text: String,
+        description: Boolean = false,
+    ) {
+        (if (description) onAllNodesWithContentDescription(text) else onAllNodesWithText(text))[0].assertIsDisplayed().performClick()
         waitForIdle()
     }
+
+    /** [text] as the pile keeps it: a line of `---` in it would cut it in two. */
+    private fun kept(text: String): String = text.trim().replace(Regex("(?m)^[^\\S\\n]*---[^\\S\\n]*$"), "***")
 
     private fun ComposeUiTest.type(
         field: Int,
@@ -570,6 +680,16 @@ class SoakTest {
         log.appendText(summary + "\n")
     }
 
+    /** Files to feed, from a folder of downloads: Markdown with lines of `---`, and a photo. */
+    private val files: List<Path> =
+        Files.createTempDirectory("peresos-soak-downloads").let { folder ->
+            listOf(
+                folder.resolve("trip.md").apply { writeText("---\ntitle: Trip\n---\n# Trip to Girona\n\nBook the train.\n\n---\n\nAsk Marta about the dog.\n") },
+                folder.resolve("notes.txt").apply { writeText("Call the bank\n---\nand the dentist\n") },
+                folder.resolve("bill.png").also { ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "png", it.toFile()) },
+            )
+        }
+
     private companion object {
         val buttons = mapOf(Answer.YES to "Take it", Answer.NO to "Bin it", Answer.LATER to "Later", Answer.AGAIN to "Another try")
 
@@ -595,6 +715,7 @@ class SoakTest {
                 "A very long one: " + "words that go on and on ".repeat(60),
                 "Tabs\tinside\tit",
                 "Markdown: **bold**, a [link](https://example.com) and `code`",
+                "Pack for the trip:\n---\nsocks\n  ---  \nand a hat",
             )
     }
 }
