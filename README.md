@@ -19,8 +19,8 @@ curl -fsSL https://raw.githubusercontent.com/deeptelar/peresos/main/install.sh |
 irm https://raw.githubusercontent.com/deeptelar/peresos/main/install.ps1 | iex
 ```
 
-It brings its own Java, adds the `peresos` command, a menu entry and **Feed to Peresós** to the
-right-click menu of files. You also need [Ollama](https://ollama.com/download):
+It brings its own Java, the `peresos` command, a menu entry and **Feed to Peresós** in the
+right-click menu of photos and PDFs. You also need [Ollama](https://ollama.com/download):
 
 ```bash
 peresos doctor --fix    # checks everything and pulls Gemma 4 (gemma4:12b, about 8 GB)
@@ -57,9 +57,13 @@ rounder as the pile shrinks.
 
 ![The four phases of Peresós, each with its own animation, and each asleep on top of the branch after eating the whole pile](docs/peresos-phases.gif)
 
-`peresos pile` lists the pile, and `peresos pile edit 3` opens the third item in your editor
-(`peresos pile remove 3` takes it off). In the window, the pencil next to an item does the same. A
-file you feed stays one item, and Gemma reads it. The pile itself is a plain text file,
+```bash
+peresos pile              # list the pile
+peresos pile edit 3       # edit item 3 in your editor
+peresos pile remove 3     # take it off
+```
+
+In the window, the pencil next to an item does the same. The pile is a plain text file,
 `~/.peresos/pile.md`, with items separated by `---`.
 
 **Without Ollama:** `peresos gemma off` brings each item as you wrote it, for yes, bin it or later.
@@ -70,8 +74,8 @@ file you feed stays one item, and Gemma reads it. The pile itself is a plain tex
 `peresos window` puts the sloth in your tray, and the terminal can close. The window does
 everything the terminal does. Click the sloth and it answers. The sky follows the season and, with
 `peresos place "Girona"`, the weather.
-The arrow in its title bar folds the window up to the sloth alone, to keep it in sight; the title
-bar then says when a bite waits, and the arrow opens the rest again.
+
+The arrow in the title bar folds the window up to the sloth alone. Folded, it says when a bite waits.
 
 ```bash
 peresos desktop on      # an icon on the desktop
