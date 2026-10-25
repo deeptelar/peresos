@@ -141,7 +141,8 @@ class SoakTest {
                     if (step % 100 == 0) fds += openFiles()
                 }
             } catch (failure: Throwable) {
-                val where = "window: ${model.session.snapshot.value}\ncheckpoint: ${runCatching { runBlocking { terminal.lastResult(home.config) } }.getOrNull()}\nbusy ${model.busy}, trouble ${model.trouble}"
+                val logged = home.path.resolve("logs/peresos.log").takeIf { it.exists() }?.toFile()?.readLines()?.takeLast(30)?.joinToString("\n").orEmpty()
+                val where = "window: ${model.session.snapshot.value}\ncheckpoint: ${runCatching { runBlocking { terminal.lastResult(home.config) } }.getOrNull()}\nbusy ${model.busy}, trouble ${model.trouble}\nlog:\n$logged"
                 throw AssertionError("Failed with seed $seed after:\n${recent.joinToString("\n")}\n$where", failure)
             } finally {
                 scope.cancel()
@@ -285,8 +286,9 @@ class SoakTest {
         }
         afterRun()
         when {
-            // Ollama stopped before it could pick; with one item on the pile it picks without Gemma, and holds it.
-            picking && stopped -> mouth = state()?.item
+            // Ollama stopped: before it could pick, it holds nothing yet (the wake marks the oldest, the pick
+            // replaces it); with one item on the pile it picked without Gemma, and holds that one.
+            picking && stopped -> mouth = if ("pick" in pending()) null else state()?.item
             picking -> mouth = picked(lastLazy)
             !resuming -> mouth = pile.first()
         }
@@ -540,7 +542,9 @@ class SoakTest {
         assertEquals(yes + no + later, sloth.meals.size, "meals")
         assertEquals(sloth.meals.size - diaryOwed, sloth.diary.size, "a line of the diary for every meal")
         assertEquals(tries, sloth.tries.size, "versions sent back")
-        val snapshot = model.session.snapshot.value
+        // The look every two seconds may be reading the checkpoint again: the window shows the last one meanwhile.
+        assertTrue(model.snapshot !is GraphSnapshot.Restoring, "the window never shows a sloth it has not read yet")
+        val snapshot = model.snapshot
         assertEquals(sloth, snapshot.state, "the window shows the checkpoint")
         assertExists(Portrait.label(sloth.roundness), Portrait.label(sloth.roundness, grew = true))
         when {
@@ -600,7 +604,8 @@ class SoakTest {
         while (true) {
             val snapshot = model.session.snapshot.value
             val free = home.awake()?.also { it.close() } != null
-            if (free && snapshot !is GraphSnapshot.Restoring && snapshot !is GraphSnapshot.Running) break
+            // And the window shows it: it takes the snapshot of the session a moment later.
+            if (free && snapshot !is GraphSnapshot.Restoring && snapshot !is GraphSnapshot.Running && model.snapshot == snapshot) break
             if (System.currentTimeMillis() > deadline) fail("Still busy: $snapshot")
             Thread.sleep(5)
         }
@@ -611,7 +616,15 @@ class SoakTest {
     private fun ComposeUiTest.synced() {
         val deadline = System.currentTimeMillis() + 10_000
         while (model.pile != pile || model.session.snapshot.value.state != state()) {
-            if (System.currentTimeMillis() > deadline) fail("The window never noticed: it shows ${model.pile}, the file has $pile")
+            if (System.currentTimeMillis() > deadline) {
+                val file = home.pile.items()
+                val at = (0..maxOf(pile.size, model.pile.size)).first { pile.getOrNull(it) != model.pile.getOrNull(it) || pile.getOrNull(it) != file.getOrNull(it) }
+                fail(
+                    "The window never noticed: ${model.pile.size} items in the window, ${file.size} in the file, ${pile.size} expected; " +
+                        "first difference at $at: window ${model.pile.getOrNull(at)}, file ${file.getOrNull(at)}, expected ${pile.getOrNull(at)}; " +
+                        "window state is the checkpoint: ${model.session.snapshot.value.state == state()}",
+                )
+            }
             Thread.sleep(50)
         }
         settle()
