@@ -20,7 +20,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,7 +63,7 @@ internal fun SlothScreen(
     chooseFiles: () -> List<Path> = ::chooseFiles,
     header: @Composable () -> Unit = {},
 ) {
-    val snapshot by model.session.snapshot.collectAsState()
+    val snapshot = model.snapshot
     val sloth = snapshot.state
     val tick = rememberTick()
     val onTop = model.isFull(sloth)
@@ -331,7 +330,7 @@ internal fun ItemScreen(
     model: SlothModel,
     item: String,
 ) {
-    val snapshot by model.session.snapshot.collectAsState()
+    val snapshot = model.snapshot
     val number = model.openedAt.takeIf { model.pile.getOrNull(it) == item }?.plus(1) ?: (model.pile.indexOf(item) + 1)
     val editable = remember(snapshot, item) { model.canEdit(item) }
     var editing by remember(item) { mutableStateOf(false) }

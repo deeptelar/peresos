@@ -3,7 +3,6 @@ package dev.deeptelar.peresos
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -143,7 +142,7 @@ private fun app(
                 SystemTray.getSystemTray().add(icon)
                 onDispose { SystemTray.getSystemTray().remove(icon) }
             }
-            val snapshot by model.session.snapshot.collectAsState()
+            val snapshot = model.snapshot
             val (badge, tooltip) = mood(snapshot, model)
             // The icon shows what the sloth is doing, drawn for the size the tray gives it.
             LaunchedEffect(badge, tooltip, shown) {

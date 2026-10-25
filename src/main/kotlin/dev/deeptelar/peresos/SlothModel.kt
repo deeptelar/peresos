@@ -128,15 +128,31 @@ internal class SlothModel(
     var ateHere: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * What the window shows: the snapshot of the session, except while it reads the checkpoint again
+     * after the terminal changed something. Then it keeps showing the last one, instead of a sloth
+     * that blinks into "opens one eye" for a moment.
+     */
+    var snapshot: GraphSnapshot<Sloth> by mutableStateOf(session.snapshot.value)
+        private set
+
+    /** What the files of the home looked like when the window last read them, or changed them itself. */
+    @Volatile private var looked: List<Long> = home.version()
+
     init {
         scope.launch {
             session.snapshot.collect { snapshot ->
+                if (snapshot !is GraphSnapshot.Restoring || this@SlothModel.snapshot.state == null) this@SlothModel.snapshot = snapshot
                 if (snapshot is GraphSnapshot.Stopped && snapshot.cause != null) {
                     trouble = trouble(snapshot.cause!!)
                     home.log.error("The wake stopped", snapshot.cause!!)
                 }
                 // Also after a stop: it may have swallowed before the diary failed.
-                if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) pile = home.pile.items()
+                if (snapshot !is GraphSnapshot.Running && snapshot !is GraphSnapshot.Restoring) {
+                    pile = home.pile.items()
+                    // What its own wake wrote is no news to read again.
+                    if (snapshot !is GraphSnapshot.Idle) looked = home.version()
+                }
             }
         }
         session.restore()
@@ -149,13 +165,19 @@ internal class SlothModel(
         }
         // The terminal shares the home: when it feeds, dresses or wakes the sloth, the window shows it.
         scope.launch {
-            var seen = home.version()
             while (true) {
                 delay(2.seconds)
-                day = today()
-                val now = home.version()
-                if (now != seen && session.snapshot.value !is GraphSnapshot.Running) refresh()
-                seen = now
+                // A file it cannot read for a moment must not stop the window from looking again.
+                try {
+                    day = today()
+                    val now = home.version()
+                    if (now != looked && session.snapshot.value !is GraphSnapshot.Running) refresh()
+                    looked = now
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    home.log.error("Looking at the home", e)
+                }
             }
         }
     }
@@ -348,7 +370,7 @@ internal class SlothModel(
      * waiting for the answer or in a wake that stopped halfway.
      */
     fun canEdit(item: String): Boolean =
-        when (val snapshot = session.snapshot.value) {
+        when (val snapshot = snapshot) {
             is GraphSnapshot.Running, is GraphSnapshot.Restoring -> false
             is GraphSnapshot.Completed, is GraphSnapshot.Idle -> true
             else -> snapshot.state?.item?.trim() != item.trim()
