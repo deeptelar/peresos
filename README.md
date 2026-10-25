@@ -70,6 +70,8 @@ file you feed stays one item, and Gemma reads it. The pile itself is a plain tex
 `peresos window` puts the sloth in your tray, and the terminal can close. The window does
 everything the terminal does. Click the sloth and it answers. The sky follows the season and, with
 `peresos place "Girona"`, the weather.
+The arrow in its title bar folds the window up to the sloth alone, to keep it in sight; the title
+bar then says when a bite waits, and the arrow opens the rest again.
 
 ```bash
 peresos desktop on      # an icon on the desktop

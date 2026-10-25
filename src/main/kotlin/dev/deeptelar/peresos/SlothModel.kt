@@ -68,6 +68,15 @@ internal class SlothModel(
         gemma = on
     }
 
+    /** Whether the window shows only the sloth, to keep it in sight, or everything. */
+    var small: Boolean by mutableStateOf(home.small())
+        private set
+
+    fun keepSmall(on: Boolean) {
+        runCatching { home.keepSmall(on) }.onFailure { home.log.error("Keeping the window small", it) }
+        small = on
+    }
+
     /** Whether it can be put on the desktop or started at login: it was installed. */
     val canLaunch: Boolean = launchers != null
 

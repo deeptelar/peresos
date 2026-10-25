@@ -46,12 +46,19 @@ private enum class Page { NOW, PILE, DIARY, WEAR, YOU, SETTINGS, ABOUT }
 /** The height of the habitat: the least that draws the sloth with pixels of 3. */
 internal val HABITAT_HEIGHT = 144.dp
 
+/** The height of the [TitleBar] of a window without a frame. */
+internal val TITLE_BAR_HEIGHT = 46.dp
+
+/** The height of the window when it shows only the sloth: its title bar, the habitat, and a strip of bark under it. */
+internal val SMALL_HEIGHT = TITLE_BAR_HEIGHT + HABITAT_HEIGHT + 12.dp
+
 /**
  * Everything in the window, in one small column: the habitat at the top, a line on the sloth with
  * the button of the menu, and the page under it. The menu holds the pages other than Now, so the
  * window shows what the sloth does, and little else.
  *
  * @param header the bar to drag the window by, when it has no frame of its own.
+ * @param small shows only the header and the habitat, to keep the sloth in sight and nothing else.
  * @param onQuit quits the app, from the menu.
  * @param chooseFiles asks the person for files to feed.
  */
@@ -61,6 +68,7 @@ internal fun SlothScreen(
     night: Boolean = LocalTime.now().hour !in 7..19,
     onQuit: (() -> Unit)? = null,
     chooseFiles: () -> List<Path> = ::chooseFiles,
+    small: Boolean = false,
     header: @Composable () -> Unit = {},
 ) {
     val snapshot = model.snapshot
@@ -90,6 +98,7 @@ internal fun SlothScreen(
             reaction?.let { PixelText(it.line, Modifier.align(Alignment.TopCenter).padding(top = 8.dp).widthIn(max = 300.dp).pixelBox(Ink.paper).padding(horizontal = 8.dp, vertical = 4.dp), size = SMALL) }
             PixelText(outside(model), Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp), size = SMALL, color = Ink.paper)
         }
+        if (small) return@Column
         val grew = model.ateHere && snapshot is GraphSnapshot.Completed && sloth?.rest == Rest.NONE && Portrait.phase(roundness) != Portrait.phase(roundness - 1)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PixelText(Portrait.label(roundness, grew), Modifier.weight(1f), size = SMALL, color = if (grew) Ink.yellow else Ink.paper)
@@ -145,12 +154,38 @@ private fun shake(
     }
 }
 
-/** The top of a window without a frame: its name, to drag it by, and a cross to hide it in the tray. Quit is in the menu. */
+/**
+ * The top of a window without a frame: its name, to drag it by, a button that folds the window up to
+ * the sloth and opens it again, and a cross to hide it in the tray. Quit is in the menu. Folded, it
+ * also says when the sloth needs the person, since the rest of the window is out of sight.
+ */
 @Composable
-internal fun TitleBar(onHide: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        PixelText("Peresós", Modifier.weight(1f), color = Ink.paper)
+internal fun TitleBar(
+    model: SlothModel,
+    onHide: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().height(TITLE_BAR_HEIGHT).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PixelText("Peresós", color = Ink.paper)
+        val glance = if (model.small) glance(model) else null
+        PixelText(glance?.first.orEmpty(), Modifier.weight(1f), size = SMALL, color = glance?.second ?: Ink.paper, maxLines = 1)
+        if (model.small) {
+            PixelIconButton(UNFOLD_ICON, "Show everything", { model.keepSmall(false) })
+        } else {
+            PixelIconButton(FOLD_ICON, "Only the sloth", { model.keepSmall(true) })
+        }
         PixelIconButton(CLOSE_ICON, "Hide", onHide)
+    }
+}
+
+/** What the sloth is doing, in a few words and a color, when it needs the person or works. */
+private fun glance(model: SlothModel): Pair<String, Color>? {
+    val snapshot = model.snapshot
+    return when {
+        model.busy -> "in a terminal" to Ink.paper
+        snapshot is GraphSnapshot.Running -> "chewing..." to Ink.paper
+        snapshot is GraphSnapshot.Interrupted && SWALLOW in snapshot.nextNodes && snapshot.state?.bite != null -> "a bite waits" to Ink.yellow
+        snapshot is GraphSnapshot.Interrupted || snapshot is GraphSnapshot.Stopped -> "stopped" to Ink.yellow
+        else -> null
     }
 }
 

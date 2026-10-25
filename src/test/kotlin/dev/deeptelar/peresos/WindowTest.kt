@@ -212,6 +212,44 @@ class WindowTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
+    fun `the title bar folds the window up to the sloth, says when a bite waits, and opens it again`() {
+        home.pile.add("Decide on the gym membership")
+        val model = model(bite)
+        model.settle()
+        runComposeUiTest {
+            setContent {
+                val height = if (model.small) SMALL_HEIGHT else WINDOW_SIZE.height
+                Box(Modifier.size(WINDOW_SIZE.width, height)) { SlothScreen(model, small = model.small) { TitleBar(model, onHide = {}) } }
+            }
+            onNodeWithText("Wake it").assertExists()
+            onNodeWithContentDescription("Show everything").assertDoesNotExist()
+
+            onNodeWithContentDescription("Only the sloth").performClick()
+            waitForIdle()
+            assertTrue(model.small)
+            assertTrue(home.small(), "it opens small next time too")
+            onNodeWithText("Wake it").assertDoesNotExist()
+            onNodeWithContentDescription("Menu").assertDoesNotExist()
+            onNodeWithText("Peresós").assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("small.png").toFile())
+
+            // Woken from the terminal, or before it folded: the title bar says it needs the person.
+            model.wake()
+            model.settle()
+            waitForIdle()
+            onNodeWithText("a bite waits").assertExists()
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", shots.resolve("small-bite.png").toFile())
+
+            onNodeWithContentDescription("Show everything").performClick()
+            waitForIdle()
+            assertFalse(home.small())
+            onNodeWithText("a bite waits").assertDoesNotExist()
+            onNodeWithText("Take it").assertExists()
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
     fun `the about page uninstalls it, after asking, and forgets the pile when told`() {
         home.pile.add("Decide on the gym membership")
         // What install.sh puts in a home on Linux: the longest list it shows.
