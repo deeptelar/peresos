@@ -4,6 +4,7 @@ import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -26,8 +27,6 @@ import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
-import java.awt.KeyboardFocusManager
-import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.MenuItem
 import java.awt.PopupMenu
@@ -40,9 +39,7 @@ import java.awt.event.WindowEvent
 import java.awt.image.BufferedImage
 import java.io.FilenameFilter
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import javax.swing.Timer
 import javax.swing.WindowConstants
 import kotlin.math.min
 import kotlin.system.exitProcess
@@ -52,9 +49,10 @@ internal val WINDOW_SIZE: DpSize = DpSize(360.dp, 600.dp)
 
 /**
  * Opens its home, `peresos window`, like JetBrains Toolbox: an icon in the tray, and a small window
- * under it. Hiding the window, or clicking somewhere else, puts it back in the tray, where the icon
- * stays and shows what the sloth is doing; the desktop says when a bite is ready. Quit from the
- * window or the icon's menu. A second `peresos window` shows the window of the first.
+ * under it. The window stays open until the person hides it, with its cross or the icon, and goes
+ * back to the tray, where the icon stays and shows what the sloth is doing; the desktop says when a
+ * bite is ready. Quit from the window or the icon's menu. The icon, or a second `peresos window`,
+ * brings the window up from behind the others, since it has no button in the taskbar.
  *
  * Without a tray, the window has a frame, and closing it quits. It shares [home] with the terminal.
  *
@@ -92,10 +90,15 @@ private fun app(
                 SlothModel(home, graph, scope, hungry, meteo = OpenMeteo(client), season = season, weather = weather, updater = Updater(client))
             }
         var shown by remember { mutableStateOf(true) }
-        // The window, for the window of an item to give the focus back to.
+        // The times the person called the window, each of which brings it up.
+        var calls by remember { mutableIntStateOf(0) }
+        val call = {
+            shown = true
+            calls++
+        }
         var main by remember { mutableStateOf<ComposeWindow?>(null) }
-        // When the window hid because the person pressed the tray icon, that click must not show it again.
-        val hidden = remember { AtomicLong() }
+        // Pressing the tray icon can take the focus away first: the window was in front all the same.
+        val blurred = remember { AtomicLong() }
         val icon = remember { if (tray) TrayIcon(trayImage(null), "Peresós").apply { isImageAutoSize = !LINUX } else null }
         val quit = {
             icon?.let { SystemTray.getSystemTray().remove(it) }
@@ -109,16 +112,17 @@ private fun app(
             while (true) {
                 delay(300)
                 val now = home.windowCalls()
-                if (now != seen) shown = true
+                if (now != seen) call()
                 seen = now
             }
         }
-        // Gemma takes a minute: when it is done and the window is hidden, or shows only the sloth, the desktop says so.
+        // Gemma takes a minute: when it is done and the window is hidden, behind others, or shows only the sloth, the desktop says so.
         LaunchedEffect(Unit) {
             var before = model.session.snapshot.value
             model.session.snapshot.collect { now ->
                 val small = tray && model.small
-                if (before is GraphSnapshot.Running && (!shown || small)) news(now, model, small)?.let { (title, text) -> notify(icon, title, text) }
+                val away = !shown || (tray && main?.isFocused != true)
+                if (before is GraphSnapshot.Running && (away || small)) news(now, model, small)?.let { (title, text) -> notify(icon, title, text) }
                 before = now
             }
         }
@@ -136,7 +140,8 @@ private fun app(
                     object : MouseAdapter() {
                         override fun mouseClicked(e: MouseEvent) {
                             if (e.button != MouseEvent.BUTTON1) return
-                            shown = if (System.currentTimeMillis() - hidden.get() < 500) false else !shown
+                            val front = main?.isFocused == true || System.currentTimeMillis() - blurred.get() < 500
+                            if (shown && front) shown = false else call()
                         }
                     },
                 )
@@ -164,22 +169,7 @@ private fun app(
                         isUndecorated = true
                         addWindowFocusListener(
                             object : WindowAdapter() {
-                                override fun windowLostFocus(e: WindowEvent) {
-                                    // A click inside can take the focus away for a while, longer when the computer is
-                                    // busy: hide only once the focus is in another app and the pointer is out of here.
-                                    Timer(250) { tick ->
-                                        val stays = choosing.get() || pointerInside() || KeyboardFocusManager.getCurrentKeyboardFocusManager().focusedWindow != null
-                                        when {
-                                            isFocused || !isVisible -> (tick.source as Timer).stop()
-                                            stays -> Unit
-                                            else -> {
-                                                (tick.source as Timer).stop()
-                                                hidden.set(System.currentTimeMillis())
-                                                shown = false
-                                            }
-                                        }
-                                    }.start()
-                                }
+                                override fun windowLostFocus(e: WindowEvent) = blurred.set(System.currentTimeMillis())
                             },
                         )
                     }
@@ -200,10 +190,12 @@ private fun app(
             },
             dispose = ComposeWindow::dispose,
         ) {
-            // Also when the window of an item closes, so that a click elsewhere hides this one again.
-            LaunchedEffect(shown, model.opened == null) {
-                if (shown && model.opened == null) {
+            LaunchedEffect(shown, calls) {
+                if (shown) {
+                    // GNOME gives a window the focus without raising it, unless it is on top for a moment.
+                    window.isAlwaysOnTop = true
                     window.toFront()
+                    window.isAlwaysOnTop = false
                     window.requestFocus()
                 }
             }
@@ -231,7 +223,7 @@ private fun app(
                 title = "Peresós: an item of the pile",
             ) {
                 // Closing it gives the focus back to the window while this one still has it: else the
-                // desktop gives it to another app, and the window hides.
+                // desktop gives it to another app.
                 DisposableEffect(Unit) {
                     onDispose {
                         main?.takeIf { shown }?.let {
@@ -289,28 +281,17 @@ private fun notify(
     if (!sent) icon?.displayMessage(title, text, TrayIcon.MessageType.INFO)
 }
 
-/** Whether the pointer is over this window. */
-private fun java.awt.Window.pointerInside(): Boolean = MouseInfo.getPointerInfo()?.location?.let(bounds::contains) == true
-
-/** The person chooses files in a dialog of the window, which takes the focus: the window stays meanwhile. */
-private val choosing = AtomicBoolean(false)
-
 /** Asks the person for photos, PDFs or text files to feed, in the dialog of the system. */
 internal fun chooseFiles(): List<Path> {
-    choosing.set(true)
-    try {
-        val dialog =
-            FileDialog(null as Frame?, "Feed Peresós", FileDialog.LOAD).apply {
-                isMultipleMode = true
-                filenameFilter = FilenameFilter { _, name -> Food.of(Path.of(name)) != null }
-                // Windows ignores the filter, and takes a pattern instead.
-                if (System.getProperty("os.name").startsWith("Windows")) file = "*.jpg;*.jpeg;*.png;*.gif;*.webp;*.pdf;*.txt;*.md"
-                isVisible = true // waits until the person chose
-            }
-        return dialog.files.map { it.toPath() }
-    } finally {
-        choosing.set(false)
-    }
+    val dialog =
+        FileDialog(null as Frame?, "Feed Peresós", FileDialog.LOAD).apply {
+            isMultipleMode = true
+            filenameFilter = FilenameFilter { _, name -> Food.of(Path.of(name)) != null }
+            // Windows ignores the filter, and takes a pattern instead.
+            if (System.getProperty("os.name").startsWith("Windows")) file = "*.jpg;*.jpeg;*.png;*.gif;*.webp;*.pdf;*.txt;*.md"
+            isVisible = true // waits until the person chose
+        }
+    return dialog.files.map { it.toPath() }
 }
 
 /**

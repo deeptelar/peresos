@@ -77,7 +77,8 @@ In the window, the pencil next to an item does the same. The pile is a plain tex
 everything the terminal does. Click the sloth and it answers. The sky follows the season and, with
 `peresos place "Girona"`, the weather.
 
-The arrow in the title bar folds the window up to the sloth alone. Folded, it says when a bite waits.
+The window stays open until you close it, with its cross or the tray icon. The arrow in the title
+bar folds it up to the sloth alone. Folded, it says when a bite waits.
 
 ```bash
 peresos desktop on      # an icon on the desktop
