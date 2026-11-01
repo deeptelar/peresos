@@ -8,7 +8,7 @@ plugins {
 
 val telar = "0.1.0-alpha14"
 
-version = "1.2.1"
+version = "1.2.2"
 
 dependencies {
     implementation("dev.deeptelar:telar-core:$telar")
